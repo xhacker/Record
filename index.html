@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>the record</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="glow"></div>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">the record</p>
+        <h1>Keep a clean trail of every idea.</h1>
+        <p class="subhead">A calm, offline-first notebook that keeps the signal and filters the noise.</p>
+      </div>
+      <div class="header-actions">
+        <button class="ghost" id="new-note">New note</button>
+        <button class="ghost" id="export-notes">Export</button>
+        <label class="ghost file-label" for="import-notes">Import</label>
+        <input id="import-notes" type="file" accept="application/json" />
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel library">
+        <div class="panel-header">
+          <div>
+            <p class="panel-title">Library</p>
+            <p class="panel-meta" id="note-count">0 notes</p>
+          </div>
+          <div class="filter">
+            <input id="search" type="search" placeholder="Search titles, tags, or text" />
+          </div>
+        </div>
+        <div class="note-list" id="note-list"></div>
+      </section>
+
+      <section class="panel editor">
+        <form id="note-form">
+          <div class="panel-header">
+            <div>
+              <p class="panel-title" id="editor-title">New note</p>
+              <p class="panel-meta" id="editor-meta">Draft mode</p>
+            </div>
+            <div class="editor-actions">
+              <button type="button" class="ghost" id="pin-note">Pin</button>
+              <button type="button" class="ghost danger" id="delete-note">Delete</button>
+              <button type="submit" class="solid">Save</button>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Title</span>
+            <input id="title" type="text" placeholder="Untitled" />
+          </label>
+
+          <label class="field">
+            <span>Tags</span>
+            <input id="tags" type="text" placeholder="comma separated" />
+          </label>
+
+          <label class="field">
+            <span>Note</span>
+            <textarea id="content" rows="12" placeholder="Write freely. Autosave keeps the rhythm."></textarea>
+          </label>
+        </form>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Stored locally in this browser. Export for backups.</p>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

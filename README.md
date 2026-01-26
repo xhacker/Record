@@ -9,10 +9,12 @@ A warm, modern writing space with Space Grotesk + Fraunces typography, soft grad
 - One note, always centered
 - Title + content fields
 - Autosaves to localStorage after a brief pause
+- Slash commands: type `/` with a prompt inside the note and press Cmd+Enter (Ctrl+Enter) to replace the command inline using paragraph context (UI default model is `kimi`)
 
 ## Quick start
 1. Install dependencies: `npm install`
 2. Run the dev server: `npm run dev`
+3. Add env vars by copying `.env.example` to `.env.local` and filling in keys
 
 ## Project structure
 - `src/routes/+page.svelte` — single-note UI + autosave logic

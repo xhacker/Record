@@ -168,22 +168,36 @@
 
 <main class="page">
   <div class="glow"></div>
-  <section class="note" aria-label="Note">
-    <input
-      class="note-title"
-      type="text"
-      placeholder="Title"
-      bind:value={title}
-      on:input={scheduleSave}
-    />
-    <textarea
-      class="note-content"
-      placeholder="Write your note..."
-      bind:value={content}
-      bind:this={contentEl}
-      on:input={scheduleSave}
-      on:keydown={handleContentKeydown}
-      aria-busy={commandPending}
-    ></textarea>
-  </section>
+  <div class="note-shell">
+    <header class="note-header">
+      <p class="app-title">THE RECORD.</p>
+    </header>
+    <section class="note" aria-label="Note">
+      <input
+        class="note-title"
+        type="text"
+        placeholder="Title"
+        bind:value={title}
+        on:input={scheduleSave}
+      />
+      <textarea
+        class="note-content"
+        placeholder="Write your note..."
+        bind:value={content}
+        bind:this={contentEl}
+        on:input={scheduleSave}
+        on:keydown={handleContentKeydown}
+        aria-busy={commandPending}
+      ></textarea>
+    </section>
+    <aside class="note-instructions" aria-label="Slash command instructions">
+      <p class="note-instructions-title">Slash commands</p>
+      <p class="note-instructions-body">
+        Type <span class="inline-chip">/</span> with a prompt and press
+        <span class="inline-chip">⌘</span> + <span class="inline-chip">↵</span> (or
+        <span class="inline-chip">Ctrl</span> + <span class="inline-chip">↵</span>) to
+        replace it inline.
+      </p>
+    </aside>
+  </div>
 </main>

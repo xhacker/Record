@@ -1,13 +1,14 @@
 # the record
 
-A focused, offline-first note taking web app with a single, centered note.
+A focused, offline-first note taking web app with a sidebar of notes and a centered editor.
 
 ## Visual Style
 A warm, modern writing space with Space Grotesk + Fraunces typography, soft gradients, and a subtle glow.
 
 ## Features
-- One note, always centered
-- Title + content fields
+- Left sidebar with notes (sorted by most recently updated)
+- Add/delete notes with confirmation
+- Centered editor with title + content fields
 - Autosaves to localStorage after a brief pause
 - Slash commands: type `/` with a prompt inside the note and press Cmd+Enter (Ctrl+Enter) to replace the command inline using paragraph context (UI default model is `kimi`)
 
@@ -17,12 +18,13 @@ A warm, modern writing space with Space Grotesk + Fraunces typography, soft grad
 3. Add env vars by copying `.env.example` to `.env.local` and filling in keys
 
 ## Project structure
-- `src/routes/+page.svelte` — single-note UI + autosave logic
+- `src/routes/+page.svelte` — multi-note UI, sidebar, and autosave logic
 - `src/app.css` — visual system and layout
 - `AGENTS.md` — agent workflow rules
 
 ## Development notes
-- Data lives in localStorage under the key `the-record-note`
+- Data lives in localStorage under the key `the-record-notes` as an array of notes:
+  - `id`, `title`, `content`, `updatedAt`
 
 ## Server/LLM notes
 - SvelteKit server routes can handle LLM proxying, streaming, auth, and basic RAG.

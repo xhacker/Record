@@ -1,43 +1,152 @@
 <script>
   import { onMount, tick } from 'svelte';
 
-  const STORAGE_KEY = 'the-record-note';
+  const STORAGE_KEY = 'the-record-notes';
   const COMMAND_MODEL = 'kimi';
 
+  let notes = [];
+  let activeId = null;
   let title = '';
   let content = '';
+  let sidebarOpen = false;
   let autosaveTimer = null;
   let mounted = false;
   let commandPending = false;
   let contentEl;
+  let activeNote;
+  let dirty = false;
 
-  const loadNote = () => {
+  $: activeNote = notes.find((note) => note.id === activeId);
+
+  const createNote = () => ({
+    id: crypto?.randomUUID?.() ?? `note-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    title: '',
+    content: '',
+    updatedAt: Date.now(),
+  });
+
+  const sortNotes = (list) =>
+    [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+
+  const loadNotes = () => {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      title = parsed.title ?? '';
-      content = parsed.content ?? '';
-    } catch (error) {
-      console.warn('Failed to parse saved note', error);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          notes = sortNotes(parsed);
+        }
+      } catch (error) {
+        console.warn('Failed to parse saved notes', error);
+      }
     }
+    if (!notes.length) {
+      notes = [createNote()];
+    }
+    activeId = notes[0].id;
+    title = notes[0].title ?? '';
+    content = notes[0].content ?? '';
+    dirty = false;
   };
 
-  const saveNote = () => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        title,
-        content,
-        updatedAt: Date.now()
-      })
+  const persistNotes = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+  };
+
+  const updateActiveDraft = () => {
+    if (!activeId) return;
+    dirty = true;
+    notes = notes.map((note) =>
+      note.id === activeId ? { ...note, title, content } : note
     );
+  };
+
+  const commitActiveNote = () => {
+    if (!activeId || !dirty) return;
+    notes = sortNotes(
+      notes.map((note) =>
+        note.id === activeId
+          ? {
+              ...note,
+              title,
+              content,
+              updatedAt: Date.now(),
+            }
+          : note
+      )
+    );
+    dirty = false;
+    persistNotes();
   };
 
   const scheduleSave = () => {
     if (!mounted) return;
     if (autosaveTimer) clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(saveNote, 400);
+    autosaveTimer = setTimeout(commitActiveNote, 400);
+  };
+
+  const selectNote = (id) => {
+    if (!id || id === activeId) return;
+    if (autosaveTimer) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = null;
+    }
+    commitActiveNote();
+    activeId = id;
+    const next = notes.find((note) => note.id === id);
+    title = next?.title ?? '';
+    content = next?.content ?? '';
+    sidebarOpen = false;
+    dirty = false;
+  };
+
+  const addNote = () => {
+    if (autosaveTimer) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = null;
+    }
+    commitActiveNote();
+    const fresh = createNote();
+    notes = [fresh, ...notes];
+    activeId = fresh.id;
+    title = '';
+    content = '';
+    persistNotes();
+    sidebarOpen = false;
+    dirty = false;
+  };
+
+  const deleteNote = (id) => {
+    const target = notes.find((note) => note.id === id);
+    if (!target) return;
+    if (autosaveTimer) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = null;
+    }
+    const label = target.title?.trim() || 'Untitled note';
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
+
+    let remaining = notes.filter((note) => note.id !== id);
+    if (!remaining.length) {
+      remaining = [createNote()];
+    }
+    notes = remaining;
+
+    if (id === activeId) {
+      activeId = notes[0].id;
+      title = notes[0].title ?? '';
+      content = notes[0].content ?? '';
+    }
+    dirty = false;
+    persistNotes();
+  };
+
+  const formatUpdated = (timestamp) => {
+    if (!timestamp) return 'Just now';
+    return new Date(timestamp).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    });
   };
 
   const getParagraphBounds = (text, index) => {
@@ -134,6 +243,7 @@
       }
 
       content = content.slice(0, command.start) + replacement + content.slice(command.end);
+      updateActiveDraft();
       scheduleSave();
       await tick();
       const caret = command.start + replacement.length;
@@ -155,7 +265,7 @@
 
   onMount(() => {
     mounted = true;
-    loadNote();
+    loadNotes();
     return () => {
       if (autosaveTimer) clearTimeout(autosaveTimer);
     };
@@ -166,11 +276,38 @@
   <title>the record</title>
 </svelte:head>
 
-<main class="page">
+<main class:sidebar-open={sidebarOpen} class="page">
   <div class="glow"></div>
+  <aside class="sidebar" aria-label="Notes">
+    <div class="sidebar-header">
+      <p class="app-title">THE RECORD.</p>
+      <button class="sidebar-close" type="button" on:click={() => (sidebarOpen = false)}>
+        Close
+      </button>
+    </div>
+    <div class="sidebar-actions">
+      <button class="primary-action" type="button" on:click={addNote}>New note</button>
+    </div>
+    <div class="sidebar-list" role="list">
+      {#each notes as note (note.id)}
+        <div class:active={note.id === activeId} class="sidebar-note" role="listitem">
+          <button class="sidebar-note-body" type="button" on:click={() => selectNote(note.id)}>
+            <span class="sidebar-note-title">{note.title?.trim() || 'Untitled'}</span>
+            <span class="sidebar-note-meta">{formatUpdated(note.updatedAt)}</span>
+          </button>
+          <button class="note-delete" type="button" on:click={() => deleteNote(note.id)}>
+            Delete
+          </button>
+        </div>
+      {/each}
+    </div>
+  </aside>
+  <div class="sidebar-overlay" on:click={() => (sidebarOpen = false)}></div>
   <div class="note-shell">
     <header class="note-header">
-      <p class="app-title">THE RECORD.</p>
+      <button class="sidebar-toggle" type="button" on:click={() => (sidebarOpen = true)}>
+        Notes
+      </button>
     </header>
     <section class="note" aria-label="Note">
       <input
@@ -178,14 +315,20 @@
         type="text"
         placeholder="Title"
         bind:value={title}
-        on:input={scheduleSave}
+        on:input={() => {
+          updateActiveDraft();
+          scheduleSave();
+        }}
       />
       <textarea
         class="note-content"
         placeholder="Write your note..."
         bind:value={content}
         bind:this={contentEl}
-        on:input={scheduleSave}
+        on:input={() => {
+          updateActiveDraft();
+          scheduleSave();
+        }}
         on:keydown={handleContentKeydown}
         aria-busy={commandPending}
       ></textarea>

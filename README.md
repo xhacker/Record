@@ -25,6 +25,7 @@ A warm, modern writing space with Space Grotesk + Fraunces typography, soft grad
 ## Development notes
 - Data lives in localStorage under the key `the-record-notes` as an array of notes:
   - `id`, `title`, `content`, `updatedAt`
+- UI state is managed with Svelte 5 runes (`$state`, `$derived`, `$effect`).
 
 ## Server/LLM notes
 - SvelteKit server routes can handle LLM proxying, streaming, auth, and basic RAG.

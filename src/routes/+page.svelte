@@ -1,22 +1,20 @@
 <script>
-  import { onMount, tick } from 'svelte';
+  import { tick } from 'svelte';
+  import { browser } from '$app/environment';
 
   const STORAGE_KEY = 'the-record-notes';
   const COMMAND_MODEL = 'kimi';
 
-  let notes = [];
-  let activeId = null;
-  let title = '';
-  let content = '';
-  let sidebarOpen = false;
-  let autosaveTimer = null;
-  let mounted = false;
-  let commandPending = false;
-  let contentEl;
-  let activeNote;
-  let dirty = false;
+  let notes = $state([]);
+  let activeId = $state(null);
+  let title = $state('');
+  let content = $state('');
+  let sidebarOpen = $state(false);
+  let commandPending = $state(false);
 
-  $: activeNote = notes.find((note) => note.id === activeId);
+  let autosaveTimer = null;
+  let contentEl;
+  let dirty = false;
 
   const createNote = () => ({
     id: crypto?.randomUUID?.() ?? `note-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -29,23 +27,26 @@
     [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 
   const loadNotes = () => {
+    let nextNotes = [];
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          notes = sortNotes(parsed);
+          nextNotes = parsed;
         }
       } catch (error) {
         console.warn('Failed to parse saved notes', error);
       }
     }
-    if (!notes.length) {
-      notes = [createNote()];
+    if (!nextNotes.length) {
+      nextNotes = [createNote()];
     }
-    activeId = notes[0].id;
-    title = notes[0].title ?? '';
-    content = notes[0].content ?? '';
+    const sorted = sortNotes(nextNotes);
+    notes = sorted;
+    activeId = sorted[0].id;
+    title = sorted[0].title ?? '';
+    content = sorted[0].content ?? '';
     dirty = false;
   };
 
@@ -80,7 +81,6 @@
   };
 
   const scheduleSave = () => {
-    if (!mounted) return;
     if (autosaveTimer) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(commitActiveNote, 400);
   };
@@ -263,8 +263,8 @@
     }
   };
 
-  onMount(() => {
-    mounted = true;
+  $effect(() => {
+    if (!browser) return;
     loadNotes();
     return () => {
       if (autosaveTimer) clearTimeout(autosaveTimer);

@@ -21,3 +21,18 @@ A warm, modern writing space with Space Grotesk + Fraunces typography, soft grad
 
 ## Development notes
 - Data lives in localStorage under the key `the-record-note`
+
+## Server/LLM notes
+- SvelteKit server routes can handle LLM proxying, streaming, auth, and basic RAG.
+- Heavy/long-running jobs, GPU workloads, and large vector indexing often fit better in a separate worker/service.
+- Hosting limits (timeouts, memory, edge/runtime constraints) are the main practical caps, not SvelteKit itself.
+- API routes live under `src/routes/api/*` with server helpers in `src/lib/server/llm`.
+- Endpoints: `GET /health`, `GET /api/models`, `POST /api/chat`.
+- Runtime keys: `GROQ_API_KEY`, `OPENROUTER_API_KEY` (plus optional `OPENROUTER_BASE_URL`, `OPENROUTER_APP_URL`, `OPENROUTER_APP_TITLE`).
+- Model overrides: `MODEL_ID` or `GROQ_MODEL` (defaults to `kimi` preset).
+
+## Hosting (Railway)
+- Use the SvelteKit Node adapter and a `start` script like `node build/index.js` for Railway deployments.
+- Runtime secrets should be read via `$env/dynamic/private` (server-only).
+- If we ever write data to disk, use Railway volumes and mount under `/app/...` to persist.
+- For durable data, prefer a database + object storage; treat volumes as local cache or index storage.

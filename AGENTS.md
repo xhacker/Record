@@ -1,7 +1,7 @@
 # AGENTS
 
 ## Core rule
-Always update both `README.md` and `AGENTS.md` with useful information as you build the project. Always ask me for architectural decisions.
+Update `README.md` with useful information as you build the project (don’t include trivial stuff). Always ask me for architectural decisions.
 
 ## Agent Notes
 - Read “Visual Style” in README.md to make sure you understand the project.

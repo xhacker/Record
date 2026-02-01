@@ -337,9 +337,8 @@
       <p class="note-instructions-title">Slash commands</p>
       <p class="note-instructions-body">
         Type <span class="inline-chip">/</span> with a prompt and press
-        <span class="inline-chip">⌘</span> + <span class="inline-chip">↵</span> (or
-        <span class="inline-chip">Ctrl</span> + <span class="inline-chip">↵</span>) to
-        replace it inline.
+        <span class="inline-chip">⌘</span> + <span class="inline-chip">↵</span> to
+        insert inline.
       </p>
     </aside>
   </div>

@@ -292,7 +292,7 @@
       {#each notes as note (note.id)}
         <div class:active={note.id === activeId} class="sidebar-note" role="listitem">
           <button class="sidebar-note-body" type="button" onclick={() => selectNote(note.id)}>
-            <span class="sidebar-note-title">{note.title?.trim() || 'Untitled'}</span>
+            <span class="sidebar-note-title">{note.title?.trim() || 'Title'}</span>
             <span class="sidebar-note-meta">{formatUpdated(note.updatedAt)}</span>
           </button>
           <button class="note-delete" type="button" onclick={() => deleteNote(note.id)}>

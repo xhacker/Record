@@ -281,31 +281,31 @@
   <aside class="sidebar" aria-label="Notes">
     <div class="sidebar-header">
       <p class="app-title">THE RECORD.</p>
-      <button class="sidebar-close" type="button" on:click={() => (sidebarOpen = false)}>
+      <button class="sidebar-close" type="button" onclick={() => (sidebarOpen = false)}>
         Close
       </button>
     </div>
     <div class="sidebar-actions">
-      <button class="primary-action" type="button" on:click={addNote}>New note</button>
+      <button class="primary-action" type="button" onclick={addNote}>New note</button>
     </div>
     <div class="sidebar-list" role="list">
       {#each notes as note (note.id)}
         <div class:active={note.id === activeId} class="sidebar-note" role="listitem">
-          <button class="sidebar-note-body" type="button" on:click={() => selectNote(note.id)}>
+          <button class="sidebar-note-body" type="button" onclick={() => selectNote(note.id)}>
             <span class="sidebar-note-title">{note.title?.trim() || 'Untitled'}</span>
             <span class="sidebar-note-meta">{formatUpdated(note.updatedAt)}</span>
           </button>
-          <button class="note-delete" type="button" on:click={() => deleteNote(note.id)}>
+          <button class="note-delete" type="button" onclick={() => deleteNote(note.id)}>
             Delete
           </button>
         </div>
       {/each}
     </div>
   </aside>
-  <div class="sidebar-overlay" on:click={() => (sidebarOpen = false)}></div>
+  <button class="sidebar-overlay" type="button" aria-label="Close sidebar" onclick={() => (sidebarOpen = false)}></button>
   <div class="note-shell">
     <header class="note-header">
-      <button class="sidebar-toggle" type="button" on:click={() => (sidebarOpen = true)}>
+      <button class="sidebar-toggle" type="button" onclick={() => (sidebarOpen = true)}>
         Notes
       </button>
     </header>
@@ -315,7 +315,7 @@
         type="text"
         placeholder="Title"
         bind:value={title}
-        on:input={() => {
+        oninput={() => {
           updateActiveDraft();
           scheduleSave();
         }}
@@ -325,11 +325,11 @@
         placeholder="Write your note..."
         bind:value={content}
         bind:this={contentEl}
-        on:input={() => {
+        oninput={() => {
           updateActiveDraft();
           scheduleSave();
         }}
-        on:keydown={handleContentKeydown}
+        onkeydown={handleContentKeydown}
         aria-busy={commandPending}
       ></textarea>
     </section>

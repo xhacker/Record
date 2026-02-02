@@ -13,6 +13,7 @@
     onTitleChange,
     onContentChange,
     onContentKeydown,
+    onContentBlur,
     contentElRef = $bindable(),
   } = $props();
 
@@ -21,6 +22,15 @@
 
   const getDisplayName = (note) => getFilenameParts(note?.filename || note?.path || '');
   const displayName = $derived.by(() => getDisplayName(note));
+  const status = $derived.by(() => {
+    if (note?.saving) {
+      return { label: 'Saving', ellipsis: true };
+    }
+    if (note?.dirty) {
+      return { label: 'Edited', ellipsis: false };
+    }
+    return null;
+  });
 
   $effect(() => {
     if (editingTitle) {
@@ -86,6 +96,9 @@
         {#if displayName.ext}
           <span class="note-title-ext">{displayName.ext}</span>
         {/if}
+        {#if status}
+          <span class="note-title-status">&nbsp;&mdash; {status.label}{#if status.ellipsis}&hellip;{/if}</span>
+        {/if}
       </span>
     {/if}
   </div>
@@ -96,6 +109,7 @@
     bind:this={contentElRef}
     oninput={(e) => onContentChange(e.target.value)}
     onkeydown={onContentKeydown}
+    onblur={onContentBlur}
     aria-busy={commandPending}
   ></textarea>
   <div
@@ -188,6 +202,11 @@
   .note-title-ext {
     color: rgba(16, 22, 22, 0.45);
     font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .note-title-status {
+    color: rgba(16, 22, 22, 0.45);
     flex-shrink: 0;
   }
 

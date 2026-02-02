@@ -25,6 +25,7 @@ const request = async (token, path, options = {}) => {
     method,
     headers: {
       ...defaultHeaders,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
       Authorization: `Bearer ${token}`,
       ...headers,
     },
@@ -52,6 +53,17 @@ const decodeBase64 = (value) => {
   const bytes = Uint8Array.from(atob(cleaned), (char) => char.charCodeAt(0));
   return new TextDecoder().decode(bytes);
 };
+
+const encodeBase64 = (value) => {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+};
+
+const encodePath = (path) => path.split('/').map(encodeURIComponent).join('/');
 
 const mapWithConcurrency = async (items, limit, mapper) => {
   if (!items.length) return [];
@@ -109,6 +121,7 @@ export const loadNotesFromGitHub = async (token) => {
       path: entry.path,
       filename,
       content,
+      sha: entry.sha,
     };
   });
 
@@ -118,5 +131,35 @@ export const loadNotesFromGitHub = async (token) => {
     repo,
     notes,
     truncated: !!tree?.truncated,
+  };
+};
+
+export const writeNoteToGitHub = async (token, note, repoOverride = null, options = {}) => {
+  const repo = repoOverride ?? await getDefaultRepo(token);
+  const path = note?.path;
+  if (!path) {
+    throw new Error('Missing note path for GitHub write-back.');
+  }
+
+  const message = options.message || `Update ${path}`;
+  const body = {
+    message,
+    content: encodeBase64(note?.content ?? ''),
+    branch: repo.defaultBranch,
+  };
+
+  if (note?.sha) {
+    body.sha = note.sha;
+  }
+
+  const encodedPath = encodePath(path);
+  const response = await request(token, `/repos/${repo.owner}/${repo.name}/contents/${encodedPath}`, {
+    method: 'PUT',
+    body,
+  });
+
+  return {
+    repo,
+    sha: response?.content?.sha ?? null,
   };
 };

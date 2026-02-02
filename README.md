@@ -12,9 +12,8 @@ npm run dev
 ## Current State
 
 **Onboarding**: GitHub PAT input (MVP)
-**Storage**: localStorage (temporary)
+**Storage**: GitHub read + single-note write-back (on blur/Cmd+S), localStorage for auth + window states
 - `the-record-auth` — GitHub PAT (MVP)
-- `the-record-notes` — array of notes
 - `the-record-states` — window positions, sizes, visibility
 
 **Grid**: 40px snap for all window positions and sizes
@@ -109,9 +108,10 @@ PUT  /repos/{owner}/{repo}/contents/{path}                  # write file
 ## Implementation Plan
 
 1. Onboarding page with GitHub OAuth (PAT input for MVP) — done
-2. GitHub API service — in progress (read-only load)
+2. GitHub API service — in progress (read + single-note write-back)
 2.1 Next steps
-   - Wire GitHub write-back (PUT contents)
+   - Wire GitHub for new note creation
+   - Wire GitHub for rename
 3. Agent tools that call GitHub API directly
 
 ### After MVP

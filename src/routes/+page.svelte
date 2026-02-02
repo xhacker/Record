@@ -3,7 +3,7 @@
   import { browser } from '$app/environment';
   import { clearAuth, loadAuthToken, saveAuth } from '$lib/auth.js';
   import { createNote, sortNotesByPath } from '$lib/notes.js';
-  import { loadNotesFromGitHub } from '$lib/github.js';
+  import { loadNotesFromGitHub, writeNoteToGitHub } from '$lib/github.js';
   import {
     loadWindowStates,
     getTopZ,
@@ -27,6 +27,7 @@
   let commandPending = $state(false);
   let hasAuth = $state(false);
   let authToken = $state(null);
+  let repoMeta = $state(null);
   let notesLoading = $state(false);
   let notesError = $state('');
 
@@ -35,11 +36,26 @@
   let resizeState = null;
   let initialized = false;
 
-  // Note operations
-  const updateNote = (noteId, field, value) => {
+  const normalizeNote = (note) => ({
+    ...note,
+    savedContent: note.content ?? '',
+    dirty: false,
+    saving: false,
+    sha: note.sha ?? null,
+  });
+
+  const updateNote = (noteId, updater) => {
     notes = notes.map((note) =>
-      note.id === noteId ? { ...note, [field]: value } : note
+      note.id === noteId ? updater(note) : note
     );
+  };
+
+  const updateNoteContent = (noteId, value) => {
+    const note = notes.find((entry) => entry.id === noteId);
+    if (!note) return;
+    const savedContent = note.savedContent ?? '';
+    const dirty = value !== savedContent;
+    updateNote(noteId, (entry) => ({ ...entry, content: value, dirty }));
   };
 
   const renameNote = (noteId, nextBase) => {
@@ -53,7 +69,46 @@
     notes = notes.map((entry) =>
       entry.id === noteId ? { ...entry, filename, path } : entry
     );
-    // TODO: When GitHub write-back is added, persist rename + resolve path collisions.
+    // TODO: Persist rename + resolve path collisions when GitHub rename is wired.
+  };
+
+  const saveNote = async (noteId) => {
+    const note = notes.find((entry) => entry.id === noteId);
+    if (!note || note.saving || !note.dirty) return;
+    if (!authToken) return;
+
+    const path = note.sha ? (note.id || note.path) : (note.path || note.id);
+    if (!path) {
+      notesError = 'Missing note path for GitHub write-back.';
+      return;
+    }
+
+    const content = note.content ?? '';
+    notesError = '';
+    updateNote(noteId, (entry) => ({ ...entry, saving: true }));
+
+    try {
+      const { repo, sha } = await writeNoteToGitHub(
+        authToken,
+        { path, content, sha: note.sha },
+        repoMeta
+      );
+      repoMeta = repo;
+      updateNote(noteId, (entry) => ({
+        ...entry,
+        saving: false,
+        savedContent: content,
+        dirty: entry.content !== content,
+        sha: sha ?? entry.sha,
+      }));
+    } catch (error) {
+      updateNote(noteId, (entry) => ({ ...entry, saving: false }));
+      notesError = error?.message ?? 'Failed to save note to GitHub.';
+    }
+  };
+
+  const handleContentBlur = (noteId) => {
+    void saveNote(noteId);
   };
 
   // Window operations
@@ -156,7 +211,7 @@
   // Note CRUD
   const addNote = () => {
     const stamp = Date.now();
-    const fresh = createNote(`untitled-${stamp}.md`);
+    const fresh = normalizeNote(createNote(`untitled-${stamp}.md`));
     notes = [fresh, ...notes];
     const visibleCount = Object.values(windowStates).filter(s => s.visible).length;
     const pos = getNewWindowPosition(visibleCount);
@@ -177,7 +232,7 @@
     windowStates = remainingStates;
     persistStates(windowStates);
     let remaining = notes.filter((note) => note.id !== id);
-    if (!remaining.length) remaining = [createNote(`untitled-${Date.now()}.md`)];
+    if (!remaining.length) remaining = [normalizeNote(createNote(`untitled-${Date.now()}.md`))];
     notes = remaining;
   };
 
@@ -197,8 +252,9 @@
     notesLoading = true;
     notesError = '';
     try {
-      const { notes: loadedNotes, truncated } = await loadNotesFromGitHub(authToken);
-      notes = sortNotesByPath(loadedNotes);
+      const { repo, notes: loadedNotes, truncated } = await loadNotesFromGitHub(authToken);
+      repoMeta = repo;
+      notes = sortNotesByPath(loadedNotes).map(normalizeNote);
       if (truncated) {
         notesError = 'Repository is large; some files may be missing from the index.';
       }
@@ -208,6 +264,7 @@
         clearAuth();
         hasAuth = false;
         authToken = null;
+        repoMeta = null;
         notes = [];
         return;
       }
@@ -229,7 +286,7 @@
     try {
       const result = await executeSlashCommand(note.content ?? '', contentEl.selectionEnd ?? 0);
       if (result) {
-        updateNote(noteId, 'content', result.newContent);
+        updateNoteContent(noteId, result.newContent);
         await tick();
         contentEl.setSelectionRange(result.newCaret, result.newCaret);
         contentEl.focus();
@@ -242,6 +299,11 @@
   };
 
   const handleContentKeydown = (noteId, event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      void saveNote(noteId);
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
       runSlashCommand(noteId);
@@ -263,7 +325,8 @@
   const handleSkip = () => {
     hasAuth = true;
     authToken = null;
-    notes = [createNote(`untitled-${Date.now()}.md`)];
+    repoMeta = null;
+    notes = [normalizeNote(createNote(`untitled-${Date.now()}.md`))];
     windowStates = loadWindowStates();
     topZ = getTopZ(windowStates);
   };
@@ -329,8 +392,9 @@
             onDragStart={(e) => startDrag(win.noteId, e)}
             onResizeStart={(e) => startResize(win.noteId, e)}
             onTitleChange={(value) => renameNote(win.noteId, value)}
-            onContentChange={(value) => { updateNote(win.noteId, 'content', value); }}
+            onContentChange={(value) => { updateNoteContent(win.noteId, value); }}
             onContentKeydown={(e) => handleContentKeydown(win.noteId, e)}
+            onContentBlur={() => handleContentBlur(win.noteId)}
             bind:contentElRef={contentEls[win.noteId]}
           />
         {/if}

@@ -1,105 +1,38 @@
 <script>
   import { tick } from 'svelte';
   import { browser } from '$app/environment';
+  import { loadAuth, saveAuth } from '$lib/auth.js';
+  import { createNote, sortNotes, loadNotes, persistNotes } from '$lib/notes.js';
+  import {
+    loadWindowStates,
+    getTopZ,
+    persistStates,
+    getOpenWindows,
+    getNewWindowPosition,
+    DEFAULT_WIDTH,
+    DEFAULT_HEIGHT,
+  } from '$lib/windowManager.js';
+  import { executeSlashCommand } from '$lib/slashCommand.js';
+  import OnboardingCard from '$lib/components/OnboardingCard.svelte';
+  import Sidebar from '$lib/components/Sidebar.svelte';
+  import NoteWindow from '$lib/components/NoteWindow.svelte';
+  import Instructions from '$lib/components/Instructions.svelte';
 
-  const STORAGE_KEY = 'the-record-notes';
-  const STATES_KEY = 'the-record-states';
-  const COMMAND_MODEL = 'kimi';
-
-  // Grid system
-  const GRID_SIZE = 40;
-  const snapToGrid = (value) => Math.round(value / GRID_SIZE) * GRID_SIZE;
-  const DEFAULT_WIDTH = GRID_SIZE * 12; // 480px
-  const DEFAULT_HEIGHT = GRID_SIZE * 10; // 400px
-
+  // State
   let notes = $state([]);
-  let windowStates = $state({}); // { noteId: { x, y, width, height, zIndex, visible } }
+  let windowStates = $state({});
   let topZ = $state(1);
   let sidebarOpen = $state(false);
   let commandPending = $state(false);
+  let hasAuth = $state(false);
 
   let autosaveTimers = {};
   let contentEls = $state({});
   let dragState = null;
   let resizeState = null;
-  let editingTitleId = $state(null);
+  let initialized = false;
 
-  // Derived: array of visible windows for rendering
-  const getOpenWindows = () => Object.entries(windowStates)
-    .filter(([_, state]) => state.visible)
-    .map(([noteId, state]) => ({ noteId, ...state }));
-
-  // Calculate centered position for new windows
-  const getNewWindowPosition = (offsetIndex = 0) => {
-    const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const offsetStep = GRID_SIZE * 2;
-    const offset = offsetIndex * offsetStep;
-    const baseX = snapToGrid((vw - DEFAULT_WIDTH) / 2);
-    const baseY = snapToGrid((vh - DEFAULT_HEIGHT) / 2);
-    return {
-      x: baseX + offset,
-      y: baseY + offset
-    };
-  };
-
-  function focusOnMount(node) {
-    node.focus();
-    node.select();
-  }
-
-  const createNote = () => ({
-    id: crypto?.randomUUID?.() ?? `note-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    title: '',
-    content: '',
-    updatedAt: Date.now(),
-  });
-
-  const sortNotes = (list) =>
-    [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-
-  const loadNotes = () => {
-    let nextNotes = [];
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          nextNotes = parsed;
-        }
-      } catch (error) {
-        console.warn('Failed to parse saved notes', error);
-      }
-    }
-    if (!nextNotes.length) {
-      nextNotes = [createNote()];
-    }
-    notes = sortNotes(nextNotes);
-
-    // Load window states
-    const statesRaw = localStorage.getItem(STATES_KEY);
-    if (statesRaw) {
-      try {
-        const parsed = JSON.parse(statesRaw);
-        if (parsed && typeof parsed === 'object') {
-          windowStates = parsed;
-          const zValues = Object.values(parsed).map(s => s.zIndex || 1);
-          topZ = Math.max(1, ...zValues) + 1;
-        }
-      } catch (error) {
-        console.warn('Failed to parse saved states', error);
-      }
-    }
-  };
-
-  const persistNotes = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
-  };
-
-  const persistStates = () => {
-    localStorage.setItem(STATES_KEY, JSON.stringify(windowStates));
-  };
-
+  // Note operations
   const updateNote = (noteId, field, value) => {
     notes = notes.map((note) =>
       note.id === noteId ? { ...note, [field]: value } : note
@@ -109,12 +42,10 @@
   const commitNote = (noteId) => {
     notes = sortNotes(
       notes.map((note) =>
-        note.id === noteId
-          ? { ...note, updatedAt: Date.now() }
-          : note
+        note.id === noteId ? { ...note, updatedAt: Date.now() } : note
       )
     );
-    persistNotes();
+    persistNotes(notes);
   };
 
   const scheduleSave = (noteId) => {
@@ -122,31 +53,29 @@
     autosaveTimers[noteId] = setTimeout(() => commitNote(noteId), 400);
   };
 
+  // Window operations
+  const bringToFront = (noteId) => {
+    const existing = windowStates[noteId];
+    if (existing) {
+      windowStates = { ...windowStates, [noteId]: { ...existing, zIndex: topZ++ } };
+    }
+  };
+
   const toggleWindow = (noteId) => {
     const existing = windowStates[noteId];
     if (existing?.visible) {
-      // Hide window but keep state
       windowStates = { ...windowStates, [noteId]: { ...existing, visible: false } };
     } else if (existing) {
-      // Show window with saved state
       windowStates = { ...windowStates, [noteId]: { ...existing, visible: true, zIndex: topZ++ } };
     } else {
-      // Create new window state
       const visibleCount = Object.values(windowStates).filter(s => s.visible).length;
       const pos = getNewWindowPosition(visibleCount);
       windowStates = {
         ...windowStates,
-        [noteId]: {
-          x: pos.x,
-          y: pos.y,
-          width: DEFAULT_WIDTH,
-          height: DEFAULT_HEIGHT,
-          zIndex: topZ++,
-          visible: true
-        }
+        [noteId]: { x: pos.x, y: pos.y, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, zIndex: topZ++, visible: true }
       };
     }
-    persistStates();
+    persistStates(windowStates);
     sidebarOpen = false;
   };
 
@@ -159,52 +88,35 @@
     const existing = windowStates[noteId];
     if (existing) {
       windowStates = { ...windowStates, [noteId]: { ...existing, visible: false } };
-      persistStates();
+      persistStates(windowStates);
     }
   };
 
-  const bringToFront = (noteId) => {
-    const existing = windowStates[noteId];
-    if (existing) {
-      windowStates = { ...windowStates, [noteId]: { ...existing, zIndex: topZ++ } };
-    }
-  };
-
+  // Drag handlers
   const startDrag = (noteId, event) => {
     if (event.target.closest('input, textarea, button')) return;
     event.preventDefault();
     bringToFront(noteId);
     const state = windowStates[noteId];
     if (!state) return;
-    dragState = {
-      noteId,
-      startX: event.clientX,
-      startY: event.clientY,
-      origX: state.x,
-      origY: state.y
-    };
+    dragState = { noteId, startX: event.clientX, startY: event.clientY, origX: state.x, origY: state.y };
   };
 
   const onDrag = (event) => {
     if (!dragState) return;
+    const { snapToGrid } = import.meta.glob ? { snapToGrid: (v) => Math.round(v / 40) * 40 } : {};
+    const snap = (v) => Math.round(v / 40) * 40;
     const dx = event.clientX - dragState.startX;
     const dy = event.clientY - dragState.startY;
-    const newX = snapToGrid(Math.max(0, dragState.origX + dx));
-    const newY = snapToGrid(Math.max(0, dragState.origY + dy));
+    const newX = snap(Math.max(0, dragState.origX + dx));
+    const newY = snap(Math.max(0, dragState.origY + dy));
     const existing = windowStates[dragState.noteId];
     if (existing) {
       windowStates = { ...windowStates, [dragState.noteId]: { ...existing, x: newX, y: newY } };
     }
   };
 
-  const endDrag = () => {
-    if (dragState || resizeState) {
-      persistStates();
-      dragState = null;
-      resizeState = null;
-    }
-  };
-
+  // Resize handlers
   const startResize = (noteId, event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -222,41 +134,39 @@
 
   const onResize = (event) => {
     if (!resizeState) return;
+    const snap = (v) => Math.round(v / 40) * 40;
+    const minSize = 160;
     const dx = event.clientX - resizeState.startX;
     const dy = event.clientY - resizeState.startY;
-    const minSize = GRID_SIZE * 4; // 160px minimum
-    const newWidth = snapToGrid(Math.max(minSize, resizeState.origWidth + dx));
-    const newHeight = snapToGrid(Math.max(minSize, resizeState.origHeight + dy));
+    const newWidth = snap(Math.max(minSize, resizeState.origWidth + dx));
+    const newHeight = snap(Math.max(minSize, resizeState.origHeight + dy));
     const existing = windowStates[resizeState.noteId];
     if (existing) {
       windowStates = { ...windowStates, [resizeState.noteId]: { ...existing, width: newWidth, height: newHeight } };
     }
   };
 
-  const onPointerMove = (event) => {
-    onDrag(event);
-    onResize(event);
+  const onPointerMove = (event) => { onDrag(event); onResize(event); };
+  const endDrag = () => {
+    if (dragState || resizeState) {
+      persistStates(windowStates);
+      dragState = null;
+      resizeState = null;
+    }
   };
 
+  // Note CRUD
   const addNote = () => {
     const fresh = createNote();
     notes = [fresh, ...notes];
-    persistNotes();
-    // Open the new note as a window
+    persistNotes(notes);
     const visibleCount = Object.values(windowStates).filter(s => s.visible).length;
     const pos = getNewWindowPosition(visibleCount);
     windowStates = {
       ...windowStates,
-      [fresh.id]: {
-        x: pos.x,
-        y: pos.y,
-        width: DEFAULT_WIDTH,
-        height: DEFAULT_HEIGHT,
-        zIndex: topZ++,
-        visible: true
-      }
+      [fresh.id]: { x: pos.x, y: pos.y, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, zIndex: topZ++, visible: true }
     };
-    persistStates();
+    persistStates(windowStates);
     sidebarOpen = false;
   };
 
@@ -269,132 +179,32 @@
     }
     const label = target.title?.trim() || 'Untitled note';
     if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
-
-    // Remove window state
     const { [id]: _, ...remainingStates } = windowStates;
     windowStates = remainingStates;
-    persistStates();
-
+    persistStates(windowStates);
     let remaining = notes.filter((note) => note.id !== id);
-    if (!remaining.length) {
-      remaining = [createNote()];
-    }
+    if (!remaining.length) remaining = [createNote()];
     notes = remaining;
-    persistNotes();
+    persistNotes(notes);
   };
 
-  const formatUpdated = (timestamp) => {
-    if (!timestamp) return 'Just now';
-    return new Date(timestamp).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  const getParagraphBounds = (text, index) => {
-    const clampedIndex = Math.min(Math.max(index, 0), text.length);
-    const separator = /\n\s*\n/g;
-    let start = 0;
-    let match;
-    while ((match = separator.exec(text)) !== null && match.index < clampedIndex) {
-      start = match.index + match[0].length;
-    }
-    separator.lastIndex = clampedIndex;
-    match = separator.exec(text);
-    const end = match ? match.index : text.length;
-    return { start, end };
-  };
-
-  const findSlashCommand = (text, cursor, paragraphStart) => {
-    const prefix = text.slice(paragraphStart, cursor);
-    let slashIndex = prefix.lastIndexOf('/');
-    while (slashIndex !== -1) {
-      const prevChar = slashIndex === 0 ? '' : prefix[slashIndex - 1];
-      if (slashIndex === 0 || /\s/.test(prevChar)) {
-        const commandText = prefix.slice(slashIndex).trim();
-        if (commandText.length > 1 && !commandText.includes('\n')) {
-          return {
-            start: paragraphStart + slashIndex,
-            end: cursor,
-            commandText,
-          };
-        }
-      }
-      slashIndex = prefix.lastIndexOf('/', slashIndex - 1);
-    }
-    return null;
-  };
-
-  const buildCommandPrompt = ({ paragraphWithoutCommand, commandText }) => {
-    return [
-      'You are assisting with a focused note.',
-      'Use the current paragraph as context for the request.',
-      '',
-      'Paragraph (command removed):',
-      paragraphWithoutCommand.trim(),
-      '',
-      'Slash command:',
-      commandText.trim(),
-      '',
-      'Return only the text that should replace the slash command. No quotes, no markdown, no extra commentary.',
-    ]
-      .filter(Boolean)
-      .join('\n');
-  };
-
+  // Slash command
   const runSlashCommand = async (noteId) => {
     const contentEl = contentEls[noteId];
     if (!contentEl || commandPending) return;
     const note = notes.find(n => n.id === noteId);
     if (!note) return;
-    const content = note.content ?? '';
-    const cursor = contentEl.selectionEnd ?? 0;
-    const { start: paragraphStart, end: paragraphEnd } = getParagraphBounds(
-      content,
-      cursor
-    );
-    const command = findSlashCommand(content, cursor, paragraphStart);
-    if (!command) return;
-
-    const paragraph = content.slice(paragraphStart, paragraphEnd);
-    const paragraphWithoutCommand =
-      paragraph.slice(0, command.start - paragraphStart) +
-      paragraph.slice(command.end - paragraphStart);
 
     commandPending = true;
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          prompt: buildCommandPrompt({
-            paragraphWithoutCommand,
-            commandText: command.commandText,
-          }),
-          model: COMMAND_MODEL,
-          temperature: 0.3,
-          max_completion_tokens: 600,
-          top_p: 1,
-        }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? 'Failed to run slash command.');
+      const result = await executeSlashCommand(note.content ?? '', contentEl.selectionEnd ?? 0);
+      if (result) {
+        updateNote(noteId, 'content', result.newContent);
+        scheduleSave(noteId);
+        await tick();
+        contentEl.setSelectionRange(result.newCaret, result.newCaret);
+        contentEl.focus();
       }
-
-      const replacement = (payload?.content ?? '').trim();
-      if (!replacement) {
-        throw new Error('Slash command returned no content.');
-      }
-
-      const newContent = content.slice(0, command.start) + replacement + content.slice(command.end);
-      updateNote(noteId, 'content', newContent);
-      scheduleSave(noteId);
-      await tick();
-      const caret = command.start + replacement.length;
-      contentEl.setSelectionRange(caret, caret);
-      contentEl.focus();
     } catch (error) {
       console.warn('Slash command failed', error);
     } finally {
@@ -409,9 +219,36 @@
     }
   };
 
+  // Auth handler
+  const handleAuth = (token) => {
+    if (saveAuth(token)) {
+      hasAuth = true;
+      notes = loadNotes();
+      windowStates = loadWindowStates();
+      topZ = getTopZ(windowStates);
+    }
+  };
+
+  // TODO: Remove skip handler before release
+  const handleSkip = () => {
+    hasAuth = true;
+    notes = loadNotes();
+    windowStates = loadWindowStates();
+    topZ = getTopZ(windowStates);
+  };
+
+  // Init
   $effect(() => {
     if (!browser) return;
-    loadNotes();
+    if (!initialized) {
+      initialized = true;
+      hasAuth = loadAuth();
+      if (hasAuth) {
+        notes = loadNotes();
+        windowStates = loadWindowStates();
+        topZ = getTopZ(windowStates);
+      }
+    }
     return () => {
       Object.values(autosaveTimers).forEach(t => clearTimeout(t));
     };
@@ -424,103 +261,134 @@
 
 <main class:sidebar-open={sidebarOpen} class="page" onpointermove={onPointerMove} onpointerup={endDrag} onpointerleave={endDrag}>
   <div class="glow"></div>
-  <aside class="sidebar" aria-label="Notes">
-    <div class="sidebar-header">
-      <p class="app-title">THE RECORD.</p>
-      <button class="sidebar-close" type="button" onclick={() => (sidebarOpen = false)}>
-        Close
-      </button>
-    </div>
-    <div class="sidebar-actions">
-      <button class="primary-action" type="button" onclick={addNote}>New note</button>
-    </div>
-    <div class="sidebar-list" role="list">
-      {#each notes as note (note.id)}
-        {@const isOpen = windowStates[note.id]?.visible}
-        <div class:active={isOpen} class="sidebar-note" role="listitem">
-          <button class="sidebar-note-body" type="button" onclick={() => toggleWindow(note.id)}>
-            <span class="sidebar-note-title">{note.title?.trim() || 'Untitled'}</span>
-            <span class="sidebar-note-meta">{formatUpdated(note.updatedAt)}</span>
-          </button>
-          <button class="note-delete" type="button" onclick={() => deleteNote(note.id)}>
-            Delete
-          </button>
-        </div>
+  {#if !hasAuth}
+    <OnboardingCard onSubmit={handleAuth} onSkip={handleSkip} />
+  {:else}
+    <Sidebar
+      {notes}
+      {windowStates}
+      onToggleWindow={toggleWindow}
+      onAddNote={addNote}
+      onDeleteNote={deleteNote}
+      onClose={() => sidebarOpen = false}
+    />
+    <button class="sidebar-overlay" type="button" aria-label="Close sidebar" onclick={() => sidebarOpen = false}></button>
+    <div class="note-shell canvas">
+      <header class="note-header">
+        <button class="sidebar-toggle" type="button" onclick={() => sidebarOpen = true}>
+          Notes
+        </button>
+      </header>
+      {#each getOpenWindows(windowStates) as win (win.noteId)}
+        {@const note = notes.find(n => n.id === win.noteId)}
+        {#if note}
+          <NoteWindow
+            {note}
+            windowState={win}
+            {commandPending}
+            onClose={() => closeWindow(win.noteId)}
+            onFocus={() => bringToFront(win.noteId)}
+            onDragStart={(e) => startDrag(win.noteId, e)}
+            onResizeStart={(e) => startResize(win.noteId, e)}
+            onTitleChange={(value) => { updateNote(win.noteId, 'title', value); scheduleSave(win.noteId); }}
+            onContentChange={(value) => { updateNote(win.noteId, 'content', value); scheduleSave(win.noteId); }}
+            onContentKeydown={(e) => handleContentKeydown(win.noteId, e)}
+            bind:contentElRef={contentEls[win.noteId]}
+          />
+        {/if}
       {/each}
+      <Instructions />
     </div>
-  </aside>
-  <button class="sidebar-overlay" type="button" aria-label="Close sidebar" onclick={() => (sidebarOpen = false)}></button>
-  <div class="note-shell canvas">
-    <header class="note-header">
-      <button class="sidebar-toggle" type="button" onclick={() => (sidebarOpen = true)}>
-        Notes
-      </button>
-    </header>
-    {#each getOpenWindows() as win (win.noteId)}
-      {@const note = notes.find(n => n.id === win.noteId)}
-      {#if note}
-        <section
-          class="note"
-          aria-label="Note"
-          style="left: {win.x}px; top: {win.y}px; width: {win.width ?? DEFAULT_WIDTH}px; height: {win.height ?? DEFAULT_HEIGHT}px; z-index: {win.zIndex};"
-          onpointerdown={() => bringToFront(win.noteId)}
-        >
-          <div
-            class="note-titlebar"
-            onpointerdown={(e) => startDrag(win.noteId, e)}
-            ondblclick={() => { editingTitleId = win.noteId; }}
-          >
-            <button class="window-close" type="button" aria-label="Close note" onclick={() => closeWindow(win.noteId)}>
-              <svg viewBox="0 0 14 14" fill="none">
-                <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
-            </button>
-            {#if editingTitleId === win.noteId}
-              <input
-                class="note-title"
-                type="text"
-                placeholder="Untitled"
-                value={note.title}
-                oninput={(e) => {
-                  updateNote(win.noteId, 'title', e.target.value);
-                  scheduleSave(win.noteId);
-                }}
-                onblur={() => { editingTitleId = null; }}
-                onkeydown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { editingTitleId = null; e.target.blur(); } }}
-                use:focusOnMount
-              />
-            {:else}
-              <span class="note-title-display">{note.title || 'Untitled'}</span>
-            {/if}
-          </div>
-          <textarea
-            class="note-content"
-            placeholder="Write your note..."
-            value={note.content}
-            bind:this={contentEls[win.noteId]}
-            oninput={(e) => {
-              updateNote(win.noteId, 'content', e.target.value);
-              scheduleSave(win.noteId);
-            }}
-            onkeydown={(e) => handleContentKeydown(win.noteId, e)}
-            aria-busy={commandPending}
-          ></textarea>
-          <div
-            class="note-resize-handle"
-            onpointerdown={(e) => startResize(win.noteId, e)}
-          ></div>
-        </section>
-      {/if}
-    {/each}
-    <aside class="slash-instructions" aria-label="Slash command instructions">
-      <p class="slash-instructions-title">Shortcuts</p>
-      <p class="slash-instructions-body">
-        Type <span class="inline-chip">/</span> with a prompt, press
-        <span class="inline-chip">⌘</span> + <span class="inline-chip">↵</span> to insert inline
-      </p>
-      <p class="slash-instructions-body">
-        Double-click title bar to rename
-      </p>
-    </aside>
-  </div>
+  {/if}
 </main>
+
+<style>
+  .page {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 48px clamp(20px, 6vw, 96px);
+    position: relative;
+  }
+
+  .page::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, var(--grid-dot) 1.5px, transparent 1.5px);
+    background-size: var(--grid-size) var(--grid-size);
+    background-position: 0 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .glow {
+    position: absolute;
+    inset: 8% 4% auto auto;
+    width: min(420px, 60vw);
+    height: min(420px, 60vw);
+    background: radial-gradient(circle, rgba(203, 111, 45, 0.22), transparent 70%);
+    filter: blur(12px);
+    z-index: var(--layer-glow);
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 11, 13, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: var(--layer-overlay);
+    border: none;
+  }
+
+  .page.sidebar-open .sidebar-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .note-shell {
+    width: min(720px, 92vw);
+    display: grid;
+    gap: 18px;
+    position: relative;
+    z-index: var(--layer-canvas);
+  }
+
+  .note-shell.canvas {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
+    display: block;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .note-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .sidebar-toggle {
+    border: none;
+    background: rgba(16, 22, 22, 0.08);
+    color: var(--ink);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: none;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .sidebar-toggle {
+      display: inline-flex;
+    }
+  }
+</style>

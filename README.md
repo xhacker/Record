@@ -11,7 +11,9 @@ npm run dev
 
 ## Current State
 
+**Onboarding**: GitHub PAT input (MVP)
 **Storage**: localStorage (temporary)
+- `the-record-auth` — GitHub PAT (MVP)
 - `the-record-notes` — array of notes
 - `the-record-states` — window positions, sizes, visibility
 
@@ -106,7 +108,7 @@ PUT  /repos/{owner}/{repo}/contents/{path}                  # write file
 
 ## Implementation Plan
 
-1. Onboarding page with GitHub OAuth (PAT input for MVP)
+1. Onboarding page with GitHub OAuth (PAT input for MVP) — done
 2. GitHub API service
 3. Agent tools that call GitHub API directly
 

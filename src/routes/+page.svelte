@@ -292,7 +292,7 @@
       {#each notes as note (note.id)}
         <div class:active={note.id === activeId} class="sidebar-note" role="listitem">
           <button class="sidebar-note-body" type="button" onclick={() => selectNote(note.id)}>
-            <span class="sidebar-note-title">{note.title?.trim() || 'Title'}</span>
+            <span class="sidebar-note-title">{note.title?.trim() || 'Untitled'}</span>
             <span class="sidebar-note-meta">{formatUpdated(note.updatedAt)}</span>
           </button>
           <button class="note-delete" type="button" onclick={() => deleteNote(note.id)}>
@@ -310,16 +310,23 @@
       </button>
     </header>
     <section class="note" aria-label="Note">
-      <input
-        class="note-title"
-        type="text"
-        placeholder="Title"
-        bind:value={title}
-        oninput={() => {
-          updateActiveDraft();
-          scheduleSave();
-        }}
-      />
+      <div class="note-titlebar">
+        <button class="window-close" type="button" aria-label="Close note">
+          <svg viewBox="0 0 14 14" fill="none">
+            <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <input
+          class="note-title"
+          type="text"
+          placeholder="Untitled"
+          bind:value={title}
+          oninput={() => {
+            updateActiveDraft();
+            scheduleSave();
+          }}
+        />
+      </div>
       <textarea
         class="note-content"
         placeholder="Write your note..."

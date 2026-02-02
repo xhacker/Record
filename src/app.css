@@ -215,16 +215,19 @@ textarea {
 }
 
 .note {
-  background: rgba(255, 255, 255, 0.75);
-  border-radius: var(--radius);
-  padding: clamp(24px, 4vw, 36px);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.05),
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(12px);
   display: grid;
-  gap: 18px;
+  gap: 0;
   animation: riseIn 0.7s ease both;
   position: relative;
+  overflow: hidden;
 }
 
 .note-header {
@@ -232,6 +235,40 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.note-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.9), rgba(245, 245, 245, 0.9));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.window-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(16, 22, 22, 0.35);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.window-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.window-close:hover {
+  background: rgba(16, 22, 22, 0.08);
+  color: rgba(16, 22, 22, 0.7);
 }
 
 .app-title {
@@ -255,13 +292,17 @@ textarea {
 }
 
 .note-title {
-  font-family: "Fraunces", "Times New Roman", serif;
-  font-size: clamp(1.6rem, 3vw, 2.2rem);
-  letter-spacing: -0.01em;
+  flex: 1;
+  font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
+  letter-spacing: 0;
   border: none;
   outline: none;
   background: transparent;
-  color: var(--ink);
+  color: rgba(16, 22, 22, 0.85);
+  margin-right: 24px;
 }
 
 .note-content {
@@ -273,6 +314,7 @@ textarea {
   line-height: 1.6;
   color: var(--ink);
   font-size: 1rem;
+  padding: clamp(20px, 4vw, 32px);
 }
 
 .note-title::placeholder,
@@ -280,9 +322,13 @@ textarea {
   color: var(--muted);
 }
 
+.note-title:focus::placeholder {
+  color: transparent;
+}
+
 .note-instructions {
   border-top: 1px solid rgba(16, 22, 22, 0.08);
-  padding-top: 10px;
+  padding: 14px clamp(20px, 4vw, 32px) clamp(20px, 4vw, 32px);
   display: grid;
   gap: 6px;
   color: var(--muted);

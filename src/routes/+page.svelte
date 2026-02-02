@@ -3,7 +3,7 @@
   import { browser } from '$app/environment';
 
   const STORAGE_KEY = 'the-record-notes';
-  const WINDOWS_KEY = 'the-record-windows';
+  const STATES_KEY = 'the-record-states';
   const COMMAND_MODEL = 'kimi';
 
   // Grid system
@@ -13,7 +13,7 @@
   const DEFAULT_HEIGHT = GRID_SIZE * 10; // 400px
 
   let notes = $state([]);
-  let openWindows = $state([]);
+  let windowStates = $state({}); // { noteId: { x, y, width, height, zIndex, visible } }
   let topZ = $state(1);
   let sidebarOpen = $state(false);
   let commandPending = $state(false);
@@ -23,6 +23,25 @@
   let dragState = null;
   let resizeState = null;
   let editingTitleId = $state(null);
+
+  // Derived: array of visible windows for rendering
+  const getOpenWindows = () => Object.entries(windowStates)
+    .filter(([_, state]) => state.visible)
+    .map(([noteId, state]) => ({ noteId, ...state }));
+
+  // Calculate centered position for new windows
+  const getNewWindowPosition = (offsetIndex = 0) => {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const offsetStep = GRID_SIZE * 2;
+    const offset = offsetIndex * offsetStep;
+    const baseX = snapToGrid((vw - DEFAULT_WIDTH) / 2);
+    const baseY = snapToGrid((vh - DEFAULT_HEIGHT) / 2);
+    return {
+      x: baseX + offset,
+      y: baseY + offset
+    };
+  };
 
   function focusOnMount(node) {
     node.focus();
@@ -57,17 +76,18 @@
     }
     notes = sortNotes(nextNotes);
 
-    // Load windows
-    const windowsRaw = localStorage.getItem(WINDOWS_KEY);
-    if (windowsRaw) {
+    // Load window states
+    const statesRaw = localStorage.getItem(STATES_KEY);
+    if (statesRaw) {
       try {
-        const parsed = JSON.parse(windowsRaw);
-        if (Array.isArray(parsed)) {
-          openWindows = parsed;
-          topZ = Math.max(1, ...parsed.map(w => w.zIndex || 1)) + 1;
+        const parsed = JSON.parse(statesRaw);
+        if (parsed && typeof parsed === 'object') {
+          windowStates = parsed;
+          const zValues = Object.values(parsed).map(s => s.zIndex || 1);
+          topZ = Math.max(1, ...zValues) + 1;
         }
       } catch (error) {
-        console.warn('Failed to parse saved windows', error);
+        console.warn('Failed to parse saved states', error);
       }
     }
   };
@@ -76,8 +96,8 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
   };
 
-  const persistWindows = () => {
-    localStorage.setItem(WINDOWS_KEY, JSON.stringify(openWindows));
+  const persistStates = () => {
+    localStorage.setItem(STATES_KEY, JSON.stringify(windowStates));
   };
 
   const updateNote = (noteId, field, value) => {
@@ -103,22 +123,30 @@
   };
 
   const toggleWindow = (noteId) => {
-    const existing = openWindows.find(w => w.noteId === noteId);
-    if (existing) {
-      openWindows = openWindows.filter(w => w.noteId !== noteId);
+    const existing = windowStates[noteId];
+    if (existing?.visible) {
+      // Hide window but keep state
+      windowStates = { ...windowStates, [noteId]: { ...existing, visible: false } };
+    } else if (existing) {
+      // Show window with saved state
+      windowStates = { ...windowStates, [noteId]: { ...existing, visible: true, zIndex: topZ++ } };
     } else {
-      const offsetStep = GRID_SIZE * 2;
-      const offset = openWindows.length * offsetStep;
-      openWindows = [...openWindows, {
-        noteId,
-        x: GRID_SIZE * 3 + offset,
-        y: GRID_SIZE * 2 + offset,
-        width: DEFAULT_WIDTH,
-        height: DEFAULT_HEIGHT,
-        zIndex: topZ++
-      }];
+      // Create new window state
+      const visibleCount = Object.values(windowStates).filter(s => s.visible).length;
+      const pos = getNewWindowPosition(visibleCount);
+      windowStates = {
+        ...windowStates,
+        [noteId]: {
+          x: pos.x,
+          y: pos.y,
+          width: DEFAULT_WIDTH,
+          height: DEFAULT_HEIGHT,
+          zIndex: topZ++,
+          visible: true
+        }
+      };
     }
-    persistWindows();
+    persistStates();
     sidebarOpen = false;
   };
 
@@ -128,28 +156,32 @@
       delete autosaveTimers[noteId];
     }
     commitNote(noteId);
-    openWindows = openWindows.filter(w => w.noteId !== noteId);
-    persistWindows();
+    const existing = windowStates[noteId];
+    if (existing) {
+      windowStates = { ...windowStates, [noteId]: { ...existing, visible: false } };
+      persistStates();
+    }
   };
 
   const bringToFront = (noteId) => {
-    openWindows = openWindows.map(w =>
-      w.noteId === noteId ? { ...w, zIndex: topZ++ } : w
-    );
+    const existing = windowStates[noteId];
+    if (existing) {
+      windowStates = { ...windowStates, [noteId]: { ...existing, zIndex: topZ++ } };
+    }
   };
 
   const startDrag = (noteId, event) => {
     if (event.target.closest('input, textarea, button')) return;
     event.preventDefault();
     bringToFront(noteId);
-    const win = openWindows.find(w => w.noteId === noteId);
-    if (!win) return;
+    const state = windowStates[noteId];
+    if (!state) return;
     dragState = {
       noteId,
       startX: event.clientX,
       startY: event.clientY,
-      origX: win.x,
-      origY: win.y
+      origX: state.x,
+      origY: state.y
     };
   };
 
@@ -159,16 +191,15 @@
     const dy = event.clientY - dragState.startY;
     const newX = snapToGrid(Math.max(0, dragState.origX + dx));
     const newY = snapToGrid(Math.max(0, dragState.origY + dy));
-    openWindows = openWindows.map(w =>
-      w.noteId === dragState.noteId
-        ? { ...w, x: newX, y: newY }
-        : w
-    );
+    const existing = windowStates[dragState.noteId];
+    if (existing) {
+      windowStates = { ...windowStates, [dragState.noteId]: { ...existing, x: newX, y: newY } };
+    }
   };
 
   const endDrag = () => {
     if (dragState || resizeState) {
-      persistWindows();
+      persistStates();
       dragState = null;
       resizeState = null;
     }
@@ -178,14 +209,14 @@
     event.preventDefault();
     event.stopPropagation();
     bringToFront(noteId);
-    const win = openWindows.find(w => w.noteId === noteId);
-    if (!win) return;
+    const state = windowStates[noteId];
+    if (!state) return;
     resizeState = {
       noteId,
       startX: event.clientX,
       startY: event.clientY,
-      origWidth: win.width ?? DEFAULT_WIDTH,
-      origHeight: win.height ?? DEFAULT_HEIGHT
+      origWidth: state.width ?? DEFAULT_WIDTH,
+      origHeight: state.height ?? DEFAULT_HEIGHT
     };
   };
 
@@ -196,11 +227,10 @@
     const minSize = GRID_SIZE * 4; // 160px minimum
     const newWidth = snapToGrid(Math.max(minSize, resizeState.origWidth + dx));
     const newHeight = snapToGrid(Math.max(minSize, resizeState.origHeight + dy));
-    openWindows = openWindows.map(w =>
-      w.noteId === resizeState.noteId
-        ? { ...w, width: newWidth, height: newHeight }
-        : w
-    );
+    const existing = windowStates[resizeState.noteId];
+    if (existing) {
+      windowStates = { ...windowStates, [resizeState.noteId]: { ...existing, width: newWidth, height: newHeight } };
+    }
   };
 
   const onPointerMove = (event) => {
@@ -213,17 +243,20 @@
     notes = [fresh, ...notes];
     persistNotes();
     // Open the new note as a window
-    const offsetStep = GRID_SIZE * 2;
-    const offset = openWindows.length * offsetStep;
-    openWindows = [...openWindows, {
-      noteId: fresh.id,
-      x: GRID_SIZE * 3 + offset,
-      y: GRID_SIZE * 2 + offset,
-      width: DEFAULT_WIDTH,
-      height: DEFAULT_HEIGHT,
-      zIndex: topZ++
-    }];
-    persistWindows();
+    const visibleCount = Object.values(windowStates).filter(s => s.visible).length;
+    const pos = getNewWindowPosition(visibleCount);
+    windowStates = {
+      ...windowStates,
+      [fresh.id]: {
+        x: pos.x,
+        y: pos.y,
+        width: DEFAULT_WIDTH,
+        height: DEFAULT_HEIGHT,
+        zIndex: topZ++,
+        visible: true
+      }
+    };
+    persistStates();
     sidebarOpen = false;
   };
 
@@ -237,9 +270,10 @@
     const label = target.title?.trim() || 'Untitled note';
     if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
 
-    // Close window if open
-    openWindows = openWindows.filter(w => w.noteId !== id);
-    persistWindows();
+    // Remove window state
+    const { [id]: _, ...remainingStates } = windowStates;
+    windowStates = remainingStates;
+    persistStates();
 
     let remaining = notes.filter((note) => note.id !== id);
     if (!remaining.length) {
@@ -402,7 +436,7 @@
     </div>
     <div class="sidebar-list" role="list">
       {#each notes as note (note.id)}
-        {@const isOpen = openWindows.some(w => w.noteId === note.id)}
+        {@const isOpen = windowStates[note.id]?.visible}
         <div class:active={isOpen} class="sidebar-note" role="listitem">
           <button class="sidebar-note-body" type="button" onclick={() => toggleWindow(note.id)}>
             <span class="sidebar-note-title">{note.title?.trim() || 'Untitled'}</span>
@@ -422,7 +456,7 @@
         Notes
       </button>
     </header>
-    {#each openWindows as win (win.noteId)}
+    {#each getOpenWindows() as win (win.noteId)}
       {@const note = notes.find(n => n.id === win.noteId)}
       {#if note}
         <section

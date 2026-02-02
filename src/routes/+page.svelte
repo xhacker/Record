@@ -6,6 +6,12 @@
   const WINDOWS_KEY = 'the-record-windows';
   const COMMAND_MODEL = 'kimi';
 
+  // Grid system
+  const GRID_SIZE = 40;
+  const snapToGrid = (value) => Math.round(value / GRID_SIZE) * GRID_SIZE;
+  const DEFAULT_WIDTH = GRID_SIZE * 12; // 480px
+  const DEFAULT_HEIGHT = GRID_SIZE * 10; // 400px
+
   let notes = $state([]);
   let openWindows = $state([]);
   let topZ = $state(1);
@@ -13,8 +19,9 @@
   let commandPending = $state(false);
 
   let autosaveTimers = {};
-  let contentEls = {};
+  let contentEls = $state({});
   let dragState = null;
+  let resizeState = null;
   let editingTitleId = $state(null);
 
   function focusOnMount(node) {
@@ -100,11 +107,14 @@
     if (existing) {
       openWindows = openWindows.filter(w => w.noteId !== noteId);
     } else {
-      const offset = openWindows.length * 30;
+      const offsetStep = GRID_SIZE * 2; // 80px between windows
+      const offset = openWindows.length * offsetStep;
       openWindows = [...openWindows, {
         noteId,
-        x: 100 + offset,
-        y: 50 + offset,
+        x: snapToGrid(120 + offset),
+        y: snapToGrid(80 + offset),
+        width: DEFAULT_WIDTH,
+        height: DEFAULT_HEIGHT,
         zIndex: topZ++
       }];
     }
@@ -147,18 +157,55 @@
     if (!dragState) return;
     const dx = event.clientX - dragState.startX;
     const dy = event.clientY - dragState.startY;
+    const newX = snapToGrid(Math.max(0, dragState.origX + dx));
+    const newY = snapToGrid(Math.max(0, dragState.origY + dy));
     openWindows = openWindows.map(w =>
       w.noteId === dragState.noteId
-        ? { ...w, x: dragState.origX + dx, y: dragState.origY + dy }
+        ? { ...w, x: newX, y: newY }
         : w
     );
   };
 
   const endDrag = () => {
-    if (dragState) {
+    if (dragState || resizeState) {
       persistWindows();
       dragState = null;
+      resizeState = null;
     }
+  };
+
+  const startResize = (noteId, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    bringToFront(noteId);
+    const win = openWindows.find(w => w.noteId === noteId);
+    if (!win) return;
+    resizeState = {
+      noteId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origWidth: win.width ?? DEFAULT_WIDTH,
+      origHeight: win.height ?? DEFAULT_HEIGHT
+    };
+  };
+
+  const onResize = (event) => {
+    if (!resizeState) return;
+    const dx = event.clientX - resizeState.startX;
+    const dy = event.clientY - resizeState.startY;
+    const minSize = GRID_SIZE * 4; // 160px minimum
+    const newWidth = snapToGrid(Math.max(minSize, resizeState.origWidth + dx));
+    const newHeight = snapToGrid(Math.max(minSize, resizeState.origHeight + dy));
+    openWindows = openWindows.map(w =>
+      w.noteId === resizeState.noteId
+        ? { ...w, width: newWidth, height: newHeight }
+        : w
+    );
+  };
+
+  const onPointerMove = (event) => {
+    onDrag(event);
+    onResize(event);
   };
 
   const addNote = () => {
@@ -166,11 +213,14 @@
     notes = [fresh, ...notes];
     persistNotes();
     // Open the new note as a window
-    const offset = openWindows.length * 30;
+    const offsetStep = GRID_SIZE * 2;
+    const offset = openWindows.length * offsetStep;
     openWindows = [...openWindows, {
       noteId: fresh.id,
-      x: 100 + offset,
-      y: 50 + offset,
+      x: snapToGrid(120 + offset),
+      y: snapToGrid(80 + offset),
+      width: DEFAULT_WIDTH,
+      height: DEFAULT_HEIGHT,
       zIndex: topZ++
     }];
     persistWindows();
@@ -338,7 +388,7 @@
   <title>the record</title>
 </svelte:head>
 
-<main class:sidebar-open={sidebarOpen} class="page" onpointermove={onDrag} onpointerup={endDrag} onpointerleave={endDrag}>
+<main class:sidebar-open={sidebarOpen} class="page" onpointermove={onPointerMove} onpointerup={endDrag} onpointerleave={endDrag}>
   <div class="glow"></div>
   <aside class="sidebar" aria-label="Notes">
     <div class="sidebar-header">
@@ -378,7 +428,7 @@
         <section
           class="note"
           aria-label="Note"
-          style="left: {win.x}px; top: {win.y}px; z-index: {win.zIndex};"
+          style="left: {win.x}px; top: {win.y}px; width: {win.width ?? DEFAULT_WIDTH}px; height: {win.height ?? DEFAULT_HEIGHT}px; z-index: {win.zIndex};"
           onpointerdown={() => bringToFront(win.noteId)}
         >
           <div
@@ -421,6 +471,10 @@
             onkeydown={(e) => handleContentKeydown(win.noteId, e)}
             aria-busy={commandPending}
           ></textarea>
+          <div
+            class="note-resize-handle"
+            onpointerdown={(e) => startResize(win.noteId, e)}
+          ></div>
         </section>
       {/if}
     {/each}

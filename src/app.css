@@ -16,6 +16,8 @@
   --layer-overlay: 1;
   --layer-sidebar: 2;
   --layer-canvas: 3;
+  --grid-size: 40px;
+  --grid-dot: rgba(16, 22, 22, 0.12);
 }
 
 * {
@@ -74,6 +76,9 @@ textarea {
   display: block;
   overflow: hidden;
   pointer-events: none;
+  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  background-position: 0 0;
 }
 
 .glow {
@@ -230,7 +235,6 @@ textarea {
 
 .note {
   position: absolute;
-  width: min(600px, 80vw);
   background: rgba(255, 255, 255, 0.85);
   border-radius: 10px;
   border: 1px solid rgba(0, 0, 0, 0.1);
@@ -240,6 +244,7 @@ textarea {
     0 8px 24px rgba(0, 0, 0, 0.12);
   backdrop-filter: blur(12px);
   display: grid;
+  grid-template-rows: auto 1fr;
   gap: 0;
   animation: riseIn 0.3s ease both;
   overflow: hidden;
@@ -291,6 +296,29 @@ textarea {
 .window-close:hover {
   background: rgba(16, 22, 22, 0.08);
   color: rgba(16, 22, 22, 0.7);
+}
+
+.note-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    rgba(16, 22, 22, 0.15) 50%
+  );
+  border-radius: 0 0 10px 0;
+}
+
+.note-resize-handle:hover {
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    rgba(16, 22, 22, 0.25) 50%
+  );
 }
 
 .app-title {
@@ -352,9 +380,8 @@ textarea {
   border: none;
   outline: none;
   background: transparent;
-  resize: vertical;
-  height: 500px;
-  min-height: 100px;
+  resize: none;
+  min-height: 0;
   line-height: 1.6;
   color: var(--ink);
   font-size: 1rem;

@@ -1,43 +1,24 @@
 # the record
 
-A focused, offline-first note taking web app with a sidebar of notes and a centered editor.
-
-## Visual Style
-A warm, modern writing space with Space Grotesk + Fraunces typography, soft gradients, and a subtle glow.
+A focused, offline-first note taking app with draggable windows on a canvas.
 
 ## Features
-- Left sidebar with notes (sorted by most recently updated)
-- Add/delete notes with confirmation
-- Centered editor with title + content fields
-- Autosaves to localStorage after a brief pause
-- Slash commands: type `/` with a prompt inside the note and press Cmd+Enter (Ctrl+Enter) to replace the command inline using paragraph context (UI default model is `kimi`)
+- **Multi-window canvas**: Open multiple notes as draggable windows
+- **Sidebar**: Click a note to toggle its window open/closed
+- **Drag to move**: Grab the title bar to reposition windows
+- **Auto-save**: Notes save to localStorage automatically
+- **Slash commands**: Type `/` with a prompt and press Cmd+Enter to insert AI-generated text inline
 
 ## Quick start
-1. Install dependencies: `npm install`
-2. Run the dev server: `npm run dev`
-3. Add env vars by copying `.env.example` to `.env.local` and filling in keys
+1. `npm install`
+2. `npm run dev`
+3. Copy `.env.example` to `.env.local` and add API keys
 
 ## Project structure
-- `src/routes/+page.svelte` — multi-note UI, sidebar, and autosave logic
+- `src/routes/+page.svelte` — multi-window UI and state management
 - `src/app.css` — visual system and layout
-- `AGENTS.md` — agent workflow rules
 
-## Development notes
-- Data lives in localStorage under the key `the-record-notes` as an array of notes:
-  - `id`, `title`, `content`, `updatedAt`
-- UI state is managed with Svelte 5 runes (`$state`, `$derived`, `$effect`).
-
-## Server/LLM notes
-- SvelteKit server routes can handle LLM proxying, streaming, auth, and basic RAG.
-- Heavy/long-running jobs, GPU workloads, and large vector indexing often fit better in a separate worker/service.
-- Hosting limits (timeouts, memory, edge/runtime constraints) are the main practical caps, not SvelteKit itself.
-- API routes live under `src/routes/api/*` with server helpers in `src/lib/server/llm`.
-- Endpoints: `GET /health`, `GET /api/models`, `POST /api/chat`.
-- Runtime keys: `GROQ_API_KEY`, `OPENROUTER_API_KEY` (plus optional `OPENROUTER_BASE_URL`, `OPENROUTER_APP_URL`, `OPENROUTER_APP_TITLE`).
-- Model overrides: `MODEL_ID` or `GROQ_MODEL` (defaults to `kimi` preset).
-
-## Hosting (Railway)
-- Use the SvelteKit Node adapter and a `start` script like `node build/index.js` for Railway deployments.
-- Runtime secrets should be read via `$env/dynamic/private` (server-only).
-- If we ever write data to disk, use Railway volumes and mount under `/app/...` to persist.
-- For durable data, prefer a database + object storage; treat volumes as local cache or index storage.
+## Data storage
+Notes and window positions are stored in localStorage:
+- `the-record-notes`: Array of notes (id, title, content, updatedAt)
+- `the-record-windows`: Array of open windows (noteId, x, y, zIndex)

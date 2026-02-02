@@ -3,18 +3,18 @@
   import { browser } from '$app/environment';
 
   const STORAGE_KEY = 'the-record-notes';
+  const WINDOWS_KEY = 'the-record-windows';
   const COMMAND_MODEL = 'kimi';
 
   let notes = $state([]);
-  let activeId = $state(null);
-  let title = $state('');
-  let content = $state('');
+  let openWindows = $state([]);
+  let topZ = $state(1);
   let sidebarOpen = $state(false);
   let commandPending = $state(false);
 
-  let autosaveTimer = null;
-  let contentEl;
-  let dirty = false;
+  let autosaveTimers = {};
+  let contentEls = {};
+  let dragState = null;
 
   const createNote = () => ({
     id: crypto?.randomUUID?.() ?? `note-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -42,102 +42,154 @@
     if (!nextNotes.length) {
       nextNotes = [createNote()];
     }
-    const sorted = sortNotes(nextNotes);
-    notes = sorted;
-    activeId = sorted[0].id;
-    title = sorted[0].title ?? '';
-    content = sorted[0].content ?? '';
-    dirty = false;
+    notes = sortNotes(nextNotes);
+
+    // Load windows
+    const windowsRaw = localStorage.getItem(WINDOWS_KEY);
+    if (windowsRaw) {
+      try {
+        const parsed = JSON.parse(windowsRaw);
+        if (Array.isArray(parsed)) {
+          openWindows = parsed;
+          topZ = Math.max(1, ...parsed.map(w => w.zIndex || 1)) + 1;
+        }
+      } catch (error) {
+        console.warn('Failed to parse saved windows', error);
+      }
+    }
   };
 
   const persistNotes = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
   };
 
-  const updateActiveDraft = () => {
-    if (!activeId) return;
-    dirty = true;
+  const persistWindows = () => {
+    localStorage.setItem(WINDOWS_KEY, JSON.stringify(openWindows));
+  };
+
+  const updateNote = (noteId, field, value) => {
     notes = notes.map((note) =>
-      note.id === activeId ? { ...note, title, content } : note
+      note.id === noteId ? { ...note, [field]: value } : note
     );
   };
 
-  const commitActiveNote = () => {
-    if (!activeId || !dirty) return;
+  const commitNote = (noteId) => {
     notes = sortNotes(
       notes.map((note) =>
-        note.id === activeId
-          ? {
-              ...note,
-              title,
-              content,
-              updatedAt: Date.now(),
-            }
+        note.id === noteId
+          ? { ...note, updatedAt: Date.now() }
           : note
       )
     );
-    dirty = false;
     persistNotes();
   };
 
-  const scheduleSave = () => {
-    if (autosaveTimer) clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(commitActiveNote, 400);
+  const scheduleSave = (noteId) => {
+    if (autosaveTimers[noteId]) clearTimeout(autosaveTimers[noteId]);
+    autosaveTimers[noteId] = setTimeout(() => commitNote(noteId), 400);
   };
 
-  const selectNote = (id) => {
-    if (!id || id === activeId) return;
-    if (autosaveTimer) {
-      clearTimeout(autosaveTimer);
-      autosaveTimer = null;
+  const toggleWindow = (noteId) => {
+    const existing = openWindows.find(w => w.noteId === noteId);
+    if (existing) {
+      openWindows = openWindows.filter(w => w.noteId !== noteId);
+    } else {
+      const offset = openWindows.length * 30;
+      openWindows = [...openWindows, {
+        noteId,
+        x: 100 + offset,
+        y: 50 + offset,
+        zIndex: topZ++
+      }];
     }
-    commitActiveNote();
-    activeId = id;
-    const next = notes.find((note) => note.id === id);
-    title = next?.title ?? '';
-    content = next?.content ?? '';
+    persistWindows();
     sidebarOpen = false;
-    dirty = false;
+  };
+
+  const closeWindow = (noteId) => {
+    if (autosaveTimers[noteId]) {
+      clearTimeout(autosaveTimers[noteId]);
+      delete autosaveTimers[noteId];
+    }
+    commitNote(noteId);
+    openWindows = openWindows.filter(w => w.noteId !== noteId);
+    persistWindows();
+  };
+
+  const bringToFront = (noteId) => {
+    openWindows = openWindows.map(w =>
+      w.noteId === noteId ? { ...w, zIndex: topZ++ } : w
+    );
+  };
+
+  const startDrag = (noteId, event) => {
+    if (event.target.closest('input, textarea, button')) return;
+    event.preventDefault();
+    bringToFront(noteId);
+    const win = openWindows.find(w => w.noteId === noteId);
+    if (!win) return;
+    dragState = {
+      noteId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origX: win.x,
+      origY: win.y
+    };
+  };
+
+  const onDrag = (event) => {
+    if (!dragState) return;
+    const dx = event.clientX - dragState.startX;
+    const dy = event.clientY - dragState.startY;
+    openWindows = openWindows.map(w =>
+      w.noteId === dragState.noteId
+        ? { ...w, x: dragState.origX + dx, y: dragState.origY + dy }
+        : w
+    );
+  };
+
+  const endDrag = () => {
+    if (dragState) {
+      persistWindows();
+      dragState = null;
+    }
   };
 
   const addNote = () => {
-    if (autosaveTimer) {
-      clearTimeout(autosaveTimer);
-      autosaveTimer = null;
-    }
-    commitActiveNote();
     const fresh = createNote();
     notes = [fresh, ...notes];
-    activeId = fresh.id;
-    title = '';
-    content = '';
     persistNotes();
+    // Open the new note as a window
+    const offset = openWindows.length * 30;
+    openWindows = [...openWindows, {
+      noteId: fresh.id,
+      x: 100 + offset,
+      y: 50 + offset,
+      zIndex: topZ++
+    }];
+    persistWindows();
     sidebarOpen = false;
-    dirty = false;
   };
 
   const deleteNote = (id) => {
     const target = notes.find((note) => note.id === id);
     if (!target) return;
-    if (autosaveTimer) {
-      clearTimeout(autosaveTimer);
-      autosaveTimer = null;
+    if (autosaveTimers[id]) {
+      clearTimeout(autosaveTimers[id]);
+      delete autosaveTimers[id];
     }
     const label = target.title?.trim() || 'Untitled note';
     if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
+
+    // Close window if open
+    openWindows = openWindows.filter(w => w.noteId !== id);
+    persistWindows();
 
     let remaining = notes.filter((note) => note.id !== id);
     if (!remaining.length) {
       remaining = [createNote()];
     }
     notes = remaining;
-
-    if (id === activeId) {
-      activeId = notes[0].id;
-      title = notes[0].title ?? '';
-      content = notes[0].content ?? '';
-    }
-    dirty = false;
     persistNotes();
   };
 
@@ -200,8 +252,12 @@
       .join('\n');
   };
 
-  const runSlashCommand = async () => {
+  const runSlashCommand = async (noteId) => {
+    const contentEl = contentEls[noteId];
     if (!contentEl || commandPending) return;
+    const note = notes.find(n => n.id === noteId);
+    if (!note) return;
+    const content = note.content ?? '';
     const cursor = contentEl.selectionEnd ?? 0;
     const { start: paragraphStart, end: paragraphEnd } = getParagraphBounds(
       content,
@@ -242,9 +298,9 @@
         throw new Error('Slash command returned no content.');
       }
 
-      content = content.slice(0, command.start) + replacement + content.slice(command.end);
-      updateActiveDraft();
-      scheduleSave();
+      const newContent = content.slice(0, command.start) + replacement + content.slice(command.end);
+      updateNote(noteId, 'content', newContent);
+      scheduleSave(noteId);
       await tick();
       const caret = command.start + replacement.length;
       contentEl.setSelectionRange(caret, caret);
@@ -256,10 +312,10 @@
     }
   };
 
-  const handleContentKeydown = (event) => {
+  const handleContentKeydown = (noteId, event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
-      runSlashCommand();
+      runSlashCommand(noteId);
     }
   };
 
@@ -267,7 +323,7 @@
     if (!browser) return;
     loadNotes();
     return () => {
-      if (autosaveTimer) clearTimeout(autosaveTimer);
+      Object.values(autosaveTimers).forEach(t => clearTimeout(t));
     };
   });
 </script>
@@ -276,7 +332,7 @@
   <title>the record</title>
 </svelte:head>
 
-<main class:sidebar-open={sidebarOpen} class="page">
+<main class:sidebar-open={sidebarOpen} class="page" onpointermove={onDrag} onpointerup={endDrag} onpointerleave={endDrag}>
   <div class="glow"></div>
   <aside class="sidebar" aria-label="Notes">
     <div class="sidebar-header">
@@ -290,8 +346,9 @@
     </div>
     <div class="sidebar-list" role="list">
       {#each notes as note (note.id)}
-        <div class:active={note.id === activeId} class="sidebar-note" role="listitem">
-          <button class="sidebar-note-body" type="button" onclick={() => selectNote(note.id)}>
+        {@const isOpen = openWindows.some(w => w.noteId === note.id)}
+        <div class:active={isOpen} class="sidebar-note" role="listitem">
+          <button class="sidebar-note-body" type="button" onclick={() => toggleWindow(note.id)}>
             <span class="sidebar-note-title">{note.title?.trim() || 'Untitled'}</span>
             <span class="sidebar-note-meta">{formatUpdated(note.updatedAt)}</span>
           </button>
@@ -303,50 +360,55 @@
     </div>
   </aside>
   <button class="sidebar-overlay" type="button" aria-label="Close sidebar" onclick={() => (sidebarOpen = false)}></button>
-  <div class="note-shell">
+  <div class="note-shell canvas">
     <header class="note-header">
       <button class="sidebar-toggle" type="button" onclick={() => (sidebarOpen = true)}>
         Notes
       </button>
     </header>
-    <section class="note" aria-label="Note">
-      <div class="note-titlebar">
-        <button class="window-close" type="button" aria-label="Close note">
-          <svg viewBox="0 0 14 14" fill="none">
-            <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        </button>
-        <input
-          class="note-title"
-          type="text"
-          placeholder="Untitled"
-          bind:value={title}
-          oninput={() => {
-            updateActiveDraft();
-            scheduleSave();
-          }}
-        />
-      </div>
-      <textarea
-        class="note-content"
-        placeholder="Write your note..."
-        bind:value={content}
-        bind:this={contentEl}
-        oninput={() => {
-          updateActiveDraft();
-          scheduleSave();
-        }}
-        onkeydown={handleContentKeydown}
-        aria-busy={commandPending}
-      ></textarea>
-    </section>
-    <aside class="note-instructions" aria-label="Slash command instructions">
-      <p class="note-instructions-title">Slash commands</p>
-      <p class="note-instructions-body">
-        Type <span class="inline-chip">/</span> with a prompt and press
-        <span class="inline-chip">⌘</span> + <span class="inline-chip">↵</span> to
-        insert inline.
-      </p>
-    </aside>
+    {#each openWindows as win (win.noteId)}
+      {@const note = notes.find(n => n.id === win.noteId)}
+      {#if note}
+        <section
+          class="note"
+          aria-label="Note"
+          style="left: {win.x}px; top: {win.y}px; z-index: {win.zIndex};"
+          onpointerdown={() => bringToFront(win.noteId)}
+        >
+          <div
+            class="note-titlebar"
+            onpointerdown={(e) => startDrag(win.noteId, e)}
+          >
+            <button class="window-close" type="button" aria-label="Close note" onclick={() => closeWindow(win.noteId)}>
+              <svg viewBox="0 0 14 14" fill="none">
+                <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <input
+              class="note-title"
+              type="text"
+              placeholder="Untitled"
+              value={note.title}
+              oninput={(e) => {
+                updateNote(win.noteId, 'title', e.target.value);
+                scheduleSave(win.noteId);
+              }}
+            />
+          </div>
+          <textarea
+            class="note-content"
+            placeholder="Write your note..."
+            value={note.content}
+            bind:this={contentEls[win.noteId]}
+            oninput={(e) => {
+              updateNote(win.noteId, 'content', e.target.value);
+              scheduleSave(win.noteId);
+            }}
+            onkeydown={(e) => handleContentKeydown(win.noteId, e)}
+            aria-busy={commandPending}
+          ></textarea>
+        </section>
+      {/if}
+    {/each}
   </div>
 </main>

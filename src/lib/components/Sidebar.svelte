@@ -1,7 +1,9 @@
 <script>
-  import { formatUpdated } from '$lib/notes.js';
+  import { getFilenameParts } from '$lib/notes.js';
 
   let { notes, windowStates, onToggleWindow, onAddNote, onDeleteNote, onClose } = $props();
+
+  const getDisplayName = (note) => getFilenameParts(note?.filename || note?.path || '');
 </script>
 
 <aside class="sidebar" aria-label="Notes">
@@ -17,10 +19,15 @@
   <div class="sidebar-list" role="list">
     {#each notes as note (note.id)}
       {@const isOpen = windowStates[note.id]?.visible}
+      {@const name = getDisplayName(note)}
       <div class:active={isOpen} class="sidebar-note" role="listitem">
         <button class="sidebar-note-body" type="button" onclick={() => onToggleWindow(note.id)}>
-          <span class="sidebar-note-title">{note.title?.trim() || 'Untitled'}</span>
-          <span class="sidebar-note-meta">{formatUpdated(note.updatedAt)}</span>
+          <span class="sidebar-note-title">
+            <span class="note-name">{name.base}</span>
+            {#if name.ext}
+              <span class="note-ext">{name.ext}</span>
+            {/if}
+          </span>
         </button>
         <button class="note-delete" type="button" onclick={() => onDeleteNote(note.id)}>
           Delete
@@ -45,6 +52,7 @@
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 12px;
+    font-family: var(--font-ui);
     z-index: var(--layer-sidebar);
   }
 
@@ -132,13 +140,18 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
+    display: inline-flex;
+    align-items: baseline;
   }
 
-  .sidebar-note-meta {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
+  .note-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .note-ext {
+    color: rgba(16, 22, 22, 0.45);
+    font-weight: 500;
     flex-shrink: 0;
   }
 

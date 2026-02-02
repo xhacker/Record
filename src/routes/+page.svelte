@@ -1,8 +1,9 @@
 <script>
   import { tick } from 'svelte';
   import { browser } from '$app/environment';
-  import { loadAuth, saveAuth } from '$lib/auth.js';
-  import { createNote, sortNotes, loadNotes, persistNotes } from '$lib/notes.js';
+  import { clearAuth, loadAuthToken, saveAuth } from '$lib/auth.js';
+  import { createNote, sortNotesByPath } from '$lib/notes.js';
+  import { loadNotesFromGitHub } from '$lib/github.js';
   import {
     loadWindowStates,
     getTopZ,
@@ -25,8 +26,10 @@
   let sidebarOpen = $state(false);
   let commandPending = $state(false);
   let hasAuth = $state(false);
+  let authToken = $state(null);
+  let notesLoading = $state(false);
+  let notesError = $state('');
 
-  let autosaveTimers = {};
   let contentEls = $state({});
   let dragState = null;
   let resizeState = null;
@@ -39,18 +42,18 @@
     );
   };
 
-  const commitNote = (noteId) => {
-    notes = sortNotes(
-      notes.map((note) =>
-        note.id === noteId ? { ...note, updatedAt: Date.now() } : note
-      )
+  const renameNote = (noteId, nextBase) => {
+    const note = notes.find((entry) => entry.id === noteId);
+    if (!note) return;
+    const trimmed = (nextBase ?? '').toString().trim();
+    const safeBase = (trimmed.replace(/\.md$/i, '').replace(/[\\/]/g, '-')) || `untitled-${Date.now()}`;
+    const directory = note.path?.includes('/') ? `${note.path.split('/').slice(0, -1).join('/')}/` : '';
+    const filename = `${safeBase}.md`;
+    const path = `${directory}${filename}`;
+    notes = notes.map((entry) =>
+      entry.id === noteId ? { ...entry, filename, path } : entry
     );
-    persistNotes(notes);
-  };
-
-  const scheduleSave = (noteId) => {
-    if (autosaveTimers[noteId]) clearTimeout(autosaveTimers[noteId]);
-    autosaveTimers[noteId] = setTimeout(() => commitNote(noteId), 400);
+    // TODO: When GitHub write-back is added, persist rename + resolve path collisions.
   };
 
   // Window operations
@@ -80,11 +83,6 @@
   };
 
   const closeWindow = (noteId) => {
-    if (autosaveTimers[noteId]) {
-      clearTimeout(autosaveTimers[noteId]);
-      delete autosaveTimers[noteId];
-    }
-    commitNote(noteId);
     const existing = windowStates[noteId];
     if (existing) {
       windowStates = { ...windowStates, [noteId]: { ...existing, visible: false } };
@@ -157,9 +155,9 @@
 
   // Note CRUD
   const addNote = () => {
-    const fresh = createNote();
+    const stamp = Date.now();
+    const fresh = createNote(`untitled-${stamp}.md`);
     notes = [fresh, ...notes];
-    persistNotes(notes);
     const visibleCount = Object.values(windowStates).filter(s => s.visible).length;
     const pos = getNewWindowPosition(visibleCount);
     windowStates = {
@@ -173,19 +171,51 @@
   const deleteNote = (id) => {
     const target = notes.find((note) => note.id === id);
     if (!target) return;
-    if (autosaveTimers[id]) {
-      clearTimeout(autosaveTimers[id]);
-      delete autosaveTimers[id];
-    }
-    const label = target.title?.trim() || 'Untitled note';
+    const label = target.filename?.trim() || 'Untitled note';
     if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
     const { [id]: _, ...remainingStates } = windowStates;
     windowStates = remainingStates;
     persistStates(windowStates);
     let remaining = notes.filter((note) => note.id !== id);
-    if (!remaining.length) remaining = [createNote()];
+    if (!remaining.length) remaining = [createNote(`untitled-${Date.now()}.md`)];
     notes = remaining;
-    persistNotes(notes);
+  };
+
+  const pruneWindowStates = (loadedNotes) => {
+    const validIds = new Set(loadedNotes.map((note) => note.id));
+    const filtered = Object.fromEntries(
+      Object.entries(windowStates).filter(([noteId]) => validIds.has(noteId))
+    );
+    if (Object.keys(filtered).length !== Object.keys(windowStates).length) {
+      windowStates = filtered;
+      persistStates(windowStates);
+    }
+  };
+
+  const loadFromGitHub = async () => {
+    if (!authToken) return;
+    notesLoading = true;
+    notesError = '';
+    try {
+      const { notes: loadedNotes, truncated } = await loadNotesFromGitHub(authToken);
+      notes = sortNotesByPath(loadedNotes);
+      if (truncated) {
+        notesError = 'Repository is large; some files may be missing from the index.';
+      }
+      pruneWindowStates(notes);
+    } catch (error) {
+      if (error?.status === 401 || error?.status === 403) {
+        clearAuth();
+        hasAuth = false;
+        authToken = null;
+        notes = [];
+        return;
+      }
+      notesError = error?.message ?? 'Failed to load notes from GitHub.';
+      notes = [];
+    } finally {
+      notesLoading = false;
+    }
   };
 
   // Slash command
@@ -200,7 +230,6 @@
       const result = await executeSlashCommand(note.content ?? '', contentEl.selectionEnd ?? 0);
       if (result) {
         updateNote(noteId, 'content', result.newContent);
-        scheduleSave(noteId);
         await tick();
         contentEl.setSelectionRange(result.newCaret, result.newCaret);
         contentEl.focus();
@@ -220,19 +249,21 @@
   };
 
   // Auth handler
-  const handleAuth = (token) => {
+  const handleAuth = async (token) => {
     if (saveAuth(token)) {
       hasAuth = true;
-      notes = loadNotes();
+      authToken = token.trim();
       windowStates = loadWindowStates();
       topZ = getTopZ(windowStates);
+      await loadFromGitHub();
     }
   };
 
   // TODO: Remove skip handler before release
   const handleSkip = () => {
     hasAuth = true;
-    notes = loadNotes();
+    authToken = null;
+    notes = [createNote(`untitled-${Date.now()}.md`)];
     windowStates = loadWindowStates();
     topZ = getTopZ(windowStates);
   };
@@ -242,16 +273,14 @@
     if (!browser) return;
     if (!initialized) {
       initialized = true;
-      hasAuth = loadAuth();
+      authToken = loadAuthToken();
+      hasAuth = !!authToken;
+      windowStates = loadWindowStates();
+      topZ = getTopZ(windowStates);
       if (hasAuth) {
-        notes = loadNotes();
-        windowStates = loadWindowStates();
-        topZ = getTopZ(windowStates);
+        void loadFromGitHub();
       }
     }
-    return () => {
-      Object.values(autosaveTimers).forEach(t => clearTimeout(t));
-    };
   });
 </script>
 
@@ -264,6 +293,15 @@
   {#if !hasAuth}
     <OnboardingCard onSubmit={handleAuth} onSkip={handleSkip} />
   {:else}
+    {#if notesLoading || notesError}
+      <div class:warning={!!notesError} class="note-status" role="status" aria-live="polite">
+        {#if notesLoading}
+          Loading notes from GitHub...
+        {:else}
+          {notesError}
+        {/if}
+      </div>
+    {/if}
     <Sidebar
       {notes}
       {windowStates}
@@ -290,8 +328,8 @@
             onFocus={() => bringToFront(win.noteId)}
             onDragStart={(e) => startDrag(win.noteId, e)}
             onResizeStart={(e) => startResize(win.noteId, e)}
-            onTitleChange={(value) => { updateNote(win.noteId, 'title', value); scheduleSave(win.noteId); }}
-            onContentChange={(value) => { updateNote(win.noteId, 'content', value); scheduleSave(win.noteId); }}
+            onTitleChange={(value) => renameNote(win.noteId, value)}
+            onContentChange={(value) => { updateNote(win.noteId, 'content', value); }}
             onContentKeydown={(e) => handleContentKeydown(win.noteId, e)}
             bind:contentElRef={contentEls[win.noteId]}
           />
@@ -371,6 +409,26 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+  }
+
+  .note-status {
+    position: fixed;
+    top: 24px;
+    right: 28px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--muted);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    box-shadow: 0 8px 18px rgba(210, 160, 120, 0.18);
+    z-index: var(--layer-sidebar);
+    pointer-events: none;
+  }
+
+  .note-status.warning {
+    color: rgba(122, 48, 16, 0.9);
+    background: rgba(255, 242, 232, 0.9);
   }
 
   .sidebar-toggle {

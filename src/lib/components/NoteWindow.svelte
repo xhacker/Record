@@ -1,5 +1,6 @@
 <script>
   import { DEFAULT_WIDTH, DEFAULT_HEIGHT } from '$lib/windowManager.js';
+  import { getFilenameParts } from '$lib/notes.js';
 
   let {
     note,
@@ -16,6 +17,26 @@
   } = $props();
 
   let editingTitle = $state(false);
+  let draftTitle = $state('');
+
+  const getDisplayName = (note) => getFilenameParts(note?.filename || note?.path || '');
+  const displayName = $derived.by(() => getDisplayName(note));
+
+  $effect(() => {
+    if (editingTitle) {
+      draftTitle = displayName.base;
+    }
+  });
+
+  const commitTitle = () => {
+    onTitleChange?.(draftTitle);
+    editingTitle = false;
+  };
+
+  const cancelTitle = () => {
+    draftTitle = displayName.base;
+    editingTitle = false;
+  };
 
   function focusOnMount(node) {
     node.focus();
@@ -33,7 +54,7 @@
     class="note-titlebar"
     role="toolbar"
     onpointerdown={onDragStart}
-    ondblclick={() => { editingTitle = true; }}
+    ondblclick={() => { editingTitle = true; draftTitle = displayName.base; }}
   >
     <button class="window-close" type="button" aria-label="Close note" onclick={onClose}>
       <svg viewBox="0 0 14 14" fill="none">
@@ -45,14 +66,27 @@
         class="note-title"
         type="text"
         placeholder="Untitled"
-        value={note.title}
-        oninput={(e) => onTitleChange(e.target.value)}
-        onblur={() => { editingTitle = false; }}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { editingTitle = false; e.target.blur(); } }}
+        value={draftTitle}
+        oninput={(e) => { draftTitle = e.target.value; }}
+        onblur={commitTitle}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commitTitle();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelTitle();
+          }
+        }}
         use:focusOnMount
       />
     {:else}
-      <span class="note-title-display">{note.title || 'Untitled'}</span>
+      <span class="note-title-display">
+        <span class="note-title-base">{displayName.base}</span>
+        {#if displayName.ext}
+          <span class="note-title-ext">{displayName.ext}</span>
+        {/if}
+      </span>
     {/if}
   </div>
   <textarea
@@ -133,7 +167,7 @@
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+    font-family: var(--font-ui);
     font-size: 0.85rem;
     font-weight: 500;
     color: rgba(16, 22, 22, 0.85);
@@ -142,6 +176,19 @@
     text-overflow: ellipsis;
     max-width: 60%;
     pointer-events: none;
+    display: inline-flex;
+    align-items: baseline;
+  }
+
+  .note-title-base {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .note-title-ext {
+    color: rgba(16, 22, 22, 0.45);
+    font-weight: 500;
+    flex-shrink: 0;
   }
 
   .note-title {
@@ -149,7 +196,7 @@
     left: 50%;
     transform: translateX(-50%);
     width: 60%;
-    font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+    font-family: var(--font-ui);
     font-size: 0.85rem;
     font-weight: 500;
     text-align: center;

@@ -21,7 +21,7 @@
     <p class="app-title">THE RECORD.</p>
     <h1 class="onboarding-title">Connect your GitHub</h1>
     <p class="onboarding-lead">
-      OAuth is coming next. For the MVP, paste a Personal Access Token so the record can read and write your notes.
+      OAuth is coming next. For the MVP, paste a Personal Access Token so the record can read your notes.
     </p>
     <form class="onboarding-form" onsubmit={handleSubmit}>
       <label class="field">
@@ -45,7 +45,7 @@
           </button>
         </div>
         <span class="field-help">
-          Stored locally in your browser. Use a token with repo access (classic) or Contents read/write (fine-grained).
+          Stored locally in your browser. Use a token with repo access (classic) or Contents read (fine-grained).
         </span>
         {#if authError}
           <span class="field-error">{authError}</span>
@@ -86,7 +86,7 @@
   }
 
   .onboarding-title {
-    font-family: "Fraunces", "Times New Roman", serif;
+    font-family: var(--font-display);
     font-weight: 600;
     font-size: clamp(2rem, 3vw, 2.6rem);
     letter-spacing: -0.01em;

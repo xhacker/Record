@@ -1,31 +1,20 @@
-import { STORAGE_KEY, loadJSON, saveJSON } from './storage.js';
+export const createNote = (filename = '', content = '') => {
+  const safeName = filename.trim() || `untitled-${Date.now()}.md`;
+  return {
+    id: safeName,
+    path: safeName,
+    filename: safeName,
+    content,
+  };
+};
 
-export const createNote = () => ({
-  id: crypto?.randomUUID?.() ?? `note-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-  title: '',
-  content: '',
-  updatedAt: Date.now(),
-});
+export const sortNotesByPath = (list) =>
+  [...list].sort((a, b) => (a.path || '').localeCompare(b.path || ''));
 
-export const sortNotes = (list) =>
-  [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-
-export const loadNotes = () => {
-  const parsed = loadJSON(STORAGE_KEY, []);
-  if (Array.isArray(parsed) && parsed.length) {
-    return sortNotes(parsed);
+export const getFilenameParts = (filename = '') => {
+  const safe = filename.trim() || 'untitled.md';
+  if (safe.toLowerCase().endsWith('.md')) {
+    return { base: safe.slice(0, -3), ext: '.md' };
   }
-  return [createNote()];
-};
-
-export const persistNotes = (notes) => {
-  saveJSON(STORAGE_KEY, notes);
-};
-
-export const formatUpdated = (timestamp) => {
-  if (!timestamp) return 'Just now';
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
+  return { base: safe, ext: '' };
 };

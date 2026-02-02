@@ -109,7 +109,9 @@ PUT  /repos/{owner}/{repo}/contents/{path}                  # write file
 ## Implementation Plan
 
 1. Onboarding page with GitHub OAuth (PAT input for MVP) — done
-2. GitHub API service
+2. GitHub API service — in progress (read-only load)
+2.1 Next steps
+   - Wire GitHub write-back (PUT contents)
 3. Agent tools that call GitHub API directly
 
 ### After MVP

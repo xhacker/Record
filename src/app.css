@@ -2,6 +2,8 @@
 
 :root {
   color-scheme: light;
+  --font-ui: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --font-display: "Fraunces", "Times New Roman", serif;
   --ink: #101616;
   --muted: #4f5b5b;
   --paper: #fbead8;
@@ -27,7 +29,7 @@
 }
 
 body {
-  font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+  font-family: var(--font-ui);
   background: radial-gradient(circle at top left, #fff0e3, transparent 60%),
     radial-gradient(circle at 80% 20%, #f6dbc6, transparent 55%),
     linear-gradient(160deg, #fbf3e7 0%, #f4e6d6 55%, #fbf0e2 100%);
@@ -48,12 +50,13 @@ body {
 
 h1,
 input,
-textarea {
+textarea,
+button {
   font-family: inherit;
 }
 
 .app-title {
-  font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+  font-family: var(--font-ui);
   font-size: 0.68rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;

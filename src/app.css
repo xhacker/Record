@@ -308,25 +308,20 @@ textarea {
 
 .note-resize-handle {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 16px;
-  height: 16px;
+  right: 4px;
+  bottom: 4px;
+  width: 12px;
+  height: 12px;
   cursor: se-resize;
-  background: linear-gradient(
-    135deg,
-    transparent 50%,
-    rgba(16, 22, 22, 0.15) 50%
-  );
-  border-radius: 0 0 10px 0;
+  background:
+    linear-gradient(135deg, transparent 50%, rgba(16, 22, 22, 0.25) 50%, rgba(16, 22, 22, 0.25) 55%, transparent 55%),
+    linear-gradient(135deg, transparent 65%, rgba(16, 22, 22, 0.25) 65%, rgba(16, 22, 22, 0.25) 70%, transparent 70%);
 }
 
 .note-resize-handle:hover {
-  background: linear-gradient(
-    135deg,
-    transparent 50%,
-    rgba(16, 22, 22, 0.25) 50%
-  );
+  background:
+    linear-gradient(135deg, transparent 50%, rgba(16, 22, 22, 0.4) 50%, rgba(16, 22, 22, 0.4) 55%, transparent 55%),
+    linear-gradient(135deg, transparent 65%, rgba(16, 22, 22, 0.4) 65%, rgba(16, 22, 22, 0.4) 70%, transparent 70%);
 }
 
 .app-title {

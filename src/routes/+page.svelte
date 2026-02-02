@@ -15,6 +15,7 @@
   let autosaveTimers = {};
   let contentEls = {};
   let dragState = null;
+  let editingTitleId = $state(null);
 
   const createNote = () => ({
     id: crypto?.randomUUID?.() ?? `note-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -378,22 +379,30 @@
           <div
             class="note-titlebar"
             onpointerdown={(e) => startDrag(win.noteId, e)}
+            ondblclick={() => { editingTitleId = win.noteId; }}
           >
             <button class="window-close" type="button" aria-label="Close note" onclick={() => closeWindow(win.noteId)}>
               <svg viewBox="0 0 14 14" fill="none">
                 <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             </button>
-            <input
-              class="note-title"
-              type="text"
-              placeholder="Untitled"
-              value={note.title}
-              oninput={(e) => {
-                updateNote(win.noteId, 'title', e.target.value);
-                scheduleSave(win.noteId);
-              }}
-            />
+            {#if editingTitleId === win.noteId}
+              <input
+                class="note-title"
+                type="text"
+                placeholder="Untitled"
+                value={note.title}
+                oninput={(e) => {
+                  updateNote(win.noteId, 'title', e.target.value);
+                  scheduleSave(win.noteId);
+                }}
+                onblur={() => { editingTitleId = null; }}
+                onkeydown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { editingTitleId = null; e.target.blur(); } }}
+                autofocus
+              />
+            {:else}
+              <span class="note-title-display">{note.title || 'Untitled'}</span>
+            {/if}
           </div>
           <textarea
             class="note-content"
@@ -410,5 +419,15 @@
         </section>
       {/if}
     {/each}
+    <aside class="slash-instructions" aria-label="Slash command instructions">
+      <p class="slash-instructions-title">Shortcuts</p>
+      <p class="slash-instructions-body">
+        Type <span class="inline-chip">/</span> with a prompt, press
+        <span class="inline-chip">⌘</span> + <span class="inline-chip">↵</span> to insert inline
+      </p>
+      <p class="slash-instructions-body">
+        Double-click title bar to rename
+      </p>
+    </aside>
   </div>
 </main>

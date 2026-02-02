@@ -307,8 +307,26 @@ textarea {
   display: none;
 }
 
+.note-title-display {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(16, 22, 22, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+  pointer-events: none;
+}
+
 .note-title {
-  flex: 1;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
   font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
   font-size: 0.85rem;
   font-weight: 500;
@@ -318,9 +336,10 @@ textarea {
   outline: none;
   background: transparent;
   color: rgba(16, 22, 22, 0.85);
-  margin-right: 24px;
   cursor: text;
   user-select: text;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .note-content {
@@ -357,15 +376,27 @@ textarea {
   opacity: 0.7;
 }
 
-.note-instructions-title {
+.slash-instructions {
+  position: fixed;
+  bottom: 28px;
+  left: 28px;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  opacity: 0.6;
+  z-index: 0;
+}
+
+.slash-instructions-title {
   color: var(--muted);
   font-weight: 600;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.note-instructions-body {
+.slash-instructions-body {
   line-height: 1.5;
 }
 

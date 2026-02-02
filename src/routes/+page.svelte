@@ -17,6 +17,11 @@
   let dragState = null;
   let editingTitleId = $state(null);
 
+  function focusOnMount(node) {
+    node.focus();
+    node.select();
+  }
+
   const createNote = () => ({
     id: crypto?.randomUUID?.() ?? `note-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     title: '',
@@ -398,7 +403,7 @@
                 }}
                 onblur={() => { editingTitleId = null; }}
                 onkeydown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { editingTitleId = null; e.target.blur(); } }}
-                autofocus
+                use:focusOnMount
               />
             {:else}
               <span class="note-title-display">{note.title || 'Untitled'}</span>

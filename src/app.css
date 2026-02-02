@@ -12,6 +12,10 @@
   --border: rgba(16, 22, 22, 0.15);
   --shadow: 0 30px 60px rgba(16, 22, 22, 0.12);
   --radius: 20px;
+  --layer-glow: 0;
+  --layer-overlay: 1;
+  --layer-sidebar: 2;
+  --layer-canvas: 3;
 }
 
 * {
@@ -59,7 +63,7 @@ textarea {
   display: grid;
   gap: 18px;
   position: relative;
-  z-index: 1;
+  z-index: var(--layer-canvas);
 }
 
 .note-shell.canvas {
@@ -69,6 +73,7 @@ textarea {
   inset: 0;
   display: block;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .glow {
@@ -78,7 +83,7 @@ textarea {
   height: min(420px, 60vw);
   background: radial-gradient(circle, rgba(203, 111, 45, 0.22), transparent 70%);
   filter: blur(12px);
-  z-index: 0;
+  z-index: var(--layer-glow);
 }
 
 .sidebar {
@@ -95,7 +100,7 @@ textarea {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
-  z-index: 3;
+  z-index: var(--layer-sidebar);
 }
 
 .sidebar-header {
@@ -220,7 +225,7 @@ textarea {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
-  z-index: 2;
+  z-index: var(--layer-overlay);
 }
 
 .note {
@@ -239,6 +244,7 @@ textarea {
   animation: riseIn 0.3s ease both;
   overflow: hidden;
   user-select: none;
+  pointer-events: auto;
 }
 
 .note-header {

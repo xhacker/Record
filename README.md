@@ -18,6 +18,12 @@ A focused, offline-first note taking app with draggable windows on a canvas.
 - `src/routes/+page.svelte` — multi-window UI and state management
 - `src/app.css` — visual system and layout
 
+## Visual Style
+- Warm gradients with a soft glow atmosphere.
+- Typography pairing: Space Grotesk for UI text, Fraunces for accent headings.
+- Glassy, light surfaces with gentle shadows and rounded corners.
+- Layering is managed via `--layer-*` tokens in `src/app.css`; note windows render above the sidebar.
+
 ## Data storage
 Notes and window positions are stored in localStorage:
 - `the-record-notes`: Array of notes (id, title, content, updatedAt)

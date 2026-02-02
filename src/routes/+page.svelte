@@ -3,7 +3,7 @@
   import { browser } from '$app/environment';
   import { clearAuth, loadAuthToken, saveAuth } from '$lib/auth.js';
   import { createNote, sortNotesByPath } from '$lib/notes.js';
-  import { loadNotesFromGitHub, writeNoteToGitHub } from '$lib/github.js';
+  import { loadNotesFromGitHub, writeNoteToGitHub, deleteNoteFromGitHub } from '$lib/github.js';
   import {
     loadWindowStates,
     getTopZ,
@@ -78,18 +78,110 @@
     updateNote(noteId, (entry) => ({ ...entry, content: value, dirty }));
   };
 
-  const renameNote = (noteId, nextBase) => {
+  const moveNoteIdentity = (fromId, toId) => {
+    if (fromId === toId) return;
+    const windowState = windowStates[fromId];
+    if (windowState) {
+      const { [fromId]: _, ...remaining } = windowStates;
+      windowStates = { ...remaining, [toId]: windowState };
+      persistStates(windowStates);
+    }
+    const contentEl = contentEls[fromId];
+    if (contentEl) {
+      const { [fromId]: __, ...remaining } = contentEls;
+      contentEls = { ...remaining, [toId]: contentEl };
+    }
+  };
+
+  const renameNote = async (noteId, nextBase) => {
     const note = notes.find((entry) => entry.id === noteId);
     if (!note) return;
     const trimmed = (nextBase ?? '').toString().trim();
     const safeBase = (trimmed.replace(/\.md$/i, '').replace(/[\\/]/g, '-')) || `untitled-${Date.now()}`;
     const directory = note.path?.includes('/') ? `${note.path.split('/').slice(0, -1).join('/')}/` : '';
     const filename = `${safeBase}.md`;
-    const path = `${directory}${filename}`;
-    notes = notes.map((entry) =>
-      entry.id === noteId ? { ...entry, filename, path } : entry
+    const nextPath = `${directory}${filename}`;
+    const currentPath = note.path ?? note.id;
+    if (!nextPath || nextPath === currentPath) return;
+
+    const conflict = notes.some((entry) =>
+      (entry.path ?? entry.id) === nextPath && entry.id !== noteId
     );
-    // TODO: Persist rename + resolve path collisions when GitHub rename is wired.
+    if (conflict) {
+      notesError = `A note named "${filename}" already exists. Choose a different name.`;
+      return;
+    }
+
+    if (!authToken) {
+      notes = sortNotesByPath(notes.map((entry) =>
+        entry.id === noteId ? { ...entry, id: nextPath, path: nextPath, filename } : entry
+      ));
+      moveNoteIdentity(noteId, nextPath);
+      return;
+    }
+
+    if (note.dirty) {
+      await saveNote(noteId);
+    }
+
+    const refreshed = notes.find((entry) => entry.id === noteId);
+    if (!refreshed || refreshed.dirty) {
+      notesError = 'Save the note before renaming.';
+      return;
+    }
+
+    notesError = '';
+    updateNote(noteId, (entry) => ({ ...entry, saving: true }));
+
+    try {
+      const { repo, sha: nextSha } = await writeNoteToGitHub(
+        authToken,
+        { path: nextPath, content: refreshed.content ?? '' },
+        repoMeta,
+        { message: `Rename ${currentPath} to ${nextPath}` }
+      );
+      repoMeta = repo;
+
+      const previousSha = refreshed.sha;
+      notes = sortNotesByPath(notes.map((entry) =>
+        entry.id === noteId
+          ? {
+              ...entry,
+              id: nextPath,
+              path: nextPath,
+              filename,
+              sha: nextSha ?? entry.sha,
+              saving: false,
+              savedContent: entry.content ?? '',
+              dirty: false,
+            }
+          : entry
+      ));
+      moveNoteIdentity(noteId, nextPath);
+
+      if (previousSha) {
+        try {
+          await deleteNoteFromGitHub(
+            authToken,
+            currentPath,
+            previousSha,
+            repoMeta,
+            { message: `Rename ${currentPath} to ${nextPath}` }
+          );
+        } catch (error) {
+          notesError = error?.message ?? 'Renamed, but failed to remove the old file.';
+        }
+      } else {
+        notesError = 'Renamed, but missing the old file hash to remove it.';
+      }
+    } catch (error) {
+      updateNote(noteId, (entry) => ({ ...entry, saving: false }));
+      if (error?.status === 422) {
+        notesError = `A note named "${filename}" already exists. Choose a different name.`;
+      } else {
+        notesError = error?.message ?? 'Failed to rename note on GitHub.';
+      }
+    }
   };
 
   const saveNote = async (noteId) => {
@@ -443,7 +535,7 @@
             onFocus={() => bringToFront(win.noteId)}
             onDragStart={(e) => startDrag(win.noteId, e)}
             onResizeStart={(e) => startResize(win.noteId, e)}
-            onTitleChange={(value) => renameNote(win.noteId, value)}
+            onTitleChange={(value) => { void renameNote(win.noteId, value); }}
             onContentChange={(value) => { updateNoteContent(win.noteId, value); }}
             onContentKeydown={(e) => handleContentKeydown(win.noteId, e)}
             onContentBlur={() => handleContentBlur(win.noteId)}

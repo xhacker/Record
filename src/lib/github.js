@@ -163,3 +163,28 @@ export const writeNoteToGitHub = async (token, note, repoOverride = null, option
     sha: response?.content?.sha ?? null,
   };
 };
+
+export const deleteNoteFromGitHub = async (token, path, sha, repoOverride = null, options = {}) => {
+  if (!path) {
+    throw new Error('Missing note path for GitHub delete.');
+  }
+  if (!sha) {
+    throw new Error('Missing note sha for GitHub delete.');
+  }
+
+  const repo = repoOverride ?? await getDefaultRepo(token);
+  const message = options.message || `Delete ${path}`;
+  const body = {
+    message,
+    sha,
+    branch: repo.defaultBranch,
+  };
+
+  const encodedPath = encodePath(path);
+  await request(token, `/repos/${repo.owner}/${repo.name}/contents/${encodedPath}`, {
+    method: 'DELETE',
+    body,
+  });
+
+  return { repo };
+};

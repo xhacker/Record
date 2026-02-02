@@ -106,9 +106,12 @@ PUT  /repos/{owner}/{repo}/contents/{path}                  # write file
 
 ## Implementation Plan
 
-1. GitHub OAuth (or PAT input for MVP)
+1. Onboarding page with GitHub OAuth (PAT input for MVP)
 2. GitHub API service
-3. IndexedDB cache with write-through
-4. Migrate from localStorage
-5. Sync status indicator
-6. Agent tools
+3. Agent tools that call GitHub API directly
+
+### After MVP
+1. Actual GitHub OAuth
+2. IndexedDB cache with write-through
+3. Sync status indicator
+4. Agent tools that read from IndexedDB

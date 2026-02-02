@@ -1,30 +1,114 @@
 # the record
 
-A focused, offline-first note taking app with draggable windows on a canvas.
+A note-taking app with draggable windows on a canvas. Notes are stored as markdown in a GitHub repo you control.
 
-## Features
-- **Multi-window canvas**: Open multiple notes as draggable windows
-- **Sidebar**: Click a note to toggle its window open/closed
-- **Drag to move**: Grab the title bar to reposition windows
-- **Auto-save**: Notes save to localStorage automatically
-- **Slash commands**: Type `/` with a prompt and press Cmd+Enter to insert AI-generated text inline
+## Quick Start
 
-## Quick start
-1. `npm install`
-2. `npm run dev`
-3. Copy `.env.example` to `.env.local` and add API keys
+```bash
+npm install
+npm run dev
+```
 
-## Project structure
-- `src/routes/+page.svelte` — multi-window UI and state management
-- `src/app.css` — visual system and layout
+## Current State
 
-## Visual Style
-- Warm gradients with a soft glow atmosphere.
-- Typography pairing: Space Grotesk for UI text, Fraunces for accent headings.
-- Glassy, light surfaces with gentle shadows and rounded corners.
-- Layering is managed via `--layer-*` tokens in `src/app.css`; note windows render above the sidebar.
+**Storage**: localStorage (temporary)
+- `the-record-notes` — array of notes
+- `the-record-states` — window positions, sizes, visibility
 
-## Data storage
-Notes and window positions are stored in localStorage:
-- `the-record-notes`: Array of notes (id, title, content, updatedAt)
-- `the-record-windows`: Array of open windows (noteId, x, y, zIndex)
+**Grid**: 40px snap for all window positions and sizes
+
+**Stack**: SvelteKit, Svelte 5
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Browser                                                                │
+│                                                                         │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────────────────┐ │
+│  │  Notes UI    │────▶│              │◀────│  Agent Loop              │ │
+│  │              │◀────│  IndexedDB   │────▶│                          │ │
+│  │  - Canvas    │     │  (cache)     │     │  Tools:                  │ │
+│  │  - Windows   │     │              │     │  - list_files            │ │
+│  │  - Sidebar   │     └──────┬───────┘     │  - read_file             │ │
+│  └──────────────┘            │             │  - write_file            │ │
+│                              │ write-      │  - search_notes          │ │
+│         │                    │ through     │  - get_canvas_state      │ │
+│         │ User's OAuth       │             │  - open_window           │ │
+│         │ token              ▼             │  - close_window          │ │
+│         │            ┌──────────────┐      │  - move_window           │ │
+│         └───────────▶│  GitHub API  │◀─────│  - resize_window         │ │
+│                      └──────────────┘      └──────────────────────────┘ │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+                               │
+                               │ LLM API (proxied to protect key)
+                               ▼
+                ┌──────────────────┐     ┌──────────────────┐
+                │  Backend         │────▶│  LLM API         │
+                │  /api/chat       │     │  (any provider)  │
+                └──────────────────┘     └──────────────────┘
+```
+
+### Data Flow
+
+- **Reads**: IndexedDB (fast, local)
+- **Writes**: IndexedDB → GitHub API (write-through)
+- UI and Agent share the same cache
+
+### Why GitHub Storage
+
+- User owns their data (it's their repo)
+- Works with Obsidian, VSCode, any editor
+- No server storage needed (privacy)
+- Offline support via IndexedDB
+
+### Repo Structure
+
+```
+notes/
+  meeting-notes.md
+  ideas.md
+.record/
+  states.json
+```
+
+### GitHub API
+
+```
+GET  /repos/{owner}/{repo}/git/trees/{branch}?recursive=1  # full tree
+GET  /repos/{owner}/{repo}/contents/{path}                  # read file
+PUT  /repos/{owner}/{repo}/contents/{path}                  # write file
+```
+
+---
+
+## Agent Tools
+
+**Files**
+- `list_files()` — list notes in repo
+- `read_file(path)` — get note content
+- `write_file(path, content)` — create/update note
+- `search_notes(query)` — find notes by content
+
+**Canvas**
+- `get_canvas_state()` — returns `{ canvasSize, openWindows }`
+
+**Windows**
+- `open_window(noteId, { x?, y?, width?, height? })`
+- `close_window(noteId)`
+- `move_window(noteId, x, y)`
+- `resize_window(noteId, width, height)`
+
+---
+
+## Implementation Plan
+
+1. GitHub OAuth (or PAT input for MVP)
+2. GitHub API service
+3. IndexedDB cache with write-through
+4. Migrate from localStorage
+5. Sync status indicator
+6. Agent tools

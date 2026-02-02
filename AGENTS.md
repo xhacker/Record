@@ -1,10 +1,9 @@
 # AGENTS
 
 ## Core rule
-Update `README.md` with useful information as you build the project (don’t include trivial stuff). Always ask me for architectural decisions.
+Update and keep `README.md` structured with useful information as you build the project (don’t include unnecessary details). Always ask me for architectural decisions.
 
 ## Agent Notes
-- Read “Visual Style” in README.md to make sure you understand the project.
 - Current visual direction: warm gradients, soft glow, Space Grotesk + Fraunces.
 - This app is SvelteKit-based and currently scoped to a single, centered note.
 - Dependencies should stay aligned with Svelte 5 + SvelteKit 2.

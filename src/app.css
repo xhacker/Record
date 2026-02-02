@@ -60,6 +60,17 @@ textarea {
   position: relative;
 }
 
+.page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--grid-dot) 1.5px, transparent 1.5px);
+  background-size: var(--grid-size) var(--grid-size);
+  background-position: 0 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
 .note-shell {
   width: min(720px, 92vw);
   display: grid;
@@ -76,9 +87,6 @@ textarea {
   display: block;
   overflow: hidden;
   pointer-events: none;
-  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
-  background-size: var(--grid-size) var(--grid-size);
-  background-position: 0 0;
 }
 
 .glow {

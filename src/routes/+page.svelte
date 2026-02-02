@@ -107,12 +107,12 @@
     if (existing) {
       openWindows = openWindows.filter(w => w.noteId !== noteId);
     } else {
-      const offsetStep = GRID_SIZE * 2; // 80px between windows
+      const offsetStep = GRID_SIZE * 2;
       const offset = openWindows.length * offsetStep;
       openWindows = [...openWindows, {
         noteId,
-        x: snapToGrid(120 + offset),
-        y: snapToGrid(80 + offset),
+        x: GRID_SIZE * 3 + offset,
+        y: GRID_SIZE * 2 + offset,
         width: DEFAULT_WIDTH,
         height: DEFAULT_HEIGHT,
         zIndex: topZ++
@@ -217,8 +217,8 @@
     const offset = openWindows.length * offsetStep;
     openWindows = [...openWindows, {
       noteId: fresh.id,
-      x: snapToGrid(120 + offset),
-      y: snapToGrid(80 + offset),
+      x: GRID_SIZE * 3 + offset,
+      y: GRID_SIZE * 2 + offset,
       width: DEFAULT_WIDTH,
       height: DEFAULT_HEIGHT,
       zIndex: topZ++

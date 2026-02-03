@@ -49,6 +49,12 @@
   let askError = $state('');
   let followupDrafts = $state({});
 
+  // Dictation state
+  let dictationRecording = $state(false);
+  let dictationPending = $state(false);
+  let mediaRecorder = null;
+  let audioChunks = [];
+
   const ASK_LABEL = 'Ask AI';
   const ASK_PLACEHOLDER = 'Ask a question...';
   const FOLLOWUP_ENABLED = false;
@@ -290,6 +296,95 @@
       askError = error?.message ?? 'Failed to ask AI.';
     } finally {
       askPending = false;
+    }
+  };
+
+  // Dictation: sends transcribed text directly to Ask AI
+  const startDictation = async () => {
+    if (dictationRecording || dictationPending || askPending) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunks = [];
+
+      // Use webm for broad browser support, fallback to default
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : undefined;
+
+      mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
+        }
+      };
+
+      const recorderMimeType = mediaRecorder.mimeType || 'audio/webm';
+
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks to release microphone
+        stream.getTracks().forEach((track) => track.stop());
+
+        if (audioChunks.length === 0) {
+          dictationPending = false;
+          return;
+        }
+
+        const audioBlob = new Blob(audioChunks, { type: recorderMimeType });
+        audioChunks = [];
+
+        // Send to transcription endpoint
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'recording.webm');
+
+        try {
+          const response = await fetch('/api/transcribe', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data?.error ?? 'Transcription failed.');
+          }
+
+          const text = (data?.text ?? '').trim();
+          if (!text) {
+            dictationPending = false;
+            return;
+          }
+
+          // Submit directly to Ask AI flow
+          askPrompt = text;
+          dictationPending = false;
+          await submitAsk();
+        } catch (error) {
+          askError = error?.message ?? 'Dictation failed.';
+          dictationPending = false;
+        }
+      };
+
+      mediaRecorder.start();
+      dictationRecording = true;
+    } catch (error) {
+      askError = error?.message ?? 'Microphone access denied.';
+    }
+  };
+
+  const stopDictation = () => {
+    if (!dictationRecording || !mediaRecorder) return;
+    dictationRecording = false;
+    dictationPending = true;
+    mediaRecorder.stop();
+    mediaRecorder = null;
+  };
+
+  const toggleDictation = () => {
+    if (dictationRecording) {
+      stopDictation();
+    } else {
+      startDictation();
     }
   };
 
@@ -538,9 +633,27 @@
         </div>
       {/if}
       <div class="ask-stack">
-        <button class="ask-ai" type="button" onclick={openAskPanel} disabled={askPending}>
-          {ASK_LABEL}
-        </button>
+        <div class="ask-buttons">
+          <button class="ask-ai" type="button" onclick={openAskPanel} disabled={askPending || dictationRecording || dictationPending}>
+            {ASK_LABEL}
+          </button>
+          <button
+            class="dictation-btn"
+            class:recording={dictationRecording}
+            type="button"
+            onclick={toggleDictation}
+            disabled={askPending || dictationPending}
+            aria-label={dictationRecording ? 'Stop recording' : 'Start dictation'}
+          >
+            {#if dictationPending}
+              ...
+            {:else if dictationRecording}
+              Stop
+            {:else}
+              Mic
+            {/if}
+          </button>
+        </div>
         {#if askOpen}
           <div class="ask-panel" role="dialog" aria-label="Ask AI">
             <p class="ask-panel-title">Ask the record</p>
@@ -703,6 +816,40 @@
   }
 
   .ask-ai:disabled {
+    cursor: wait;
+    opacity: 0.7;
+  }
+
+  .ask-buttons {
+    display: flex;
+    gap: 8px;
+  }
+
+  .dictation-btn {
+    border: none;
+    background: rgba(16, 22, 22, 0.1);
+    color: rgba(16, 22, 22, 0.7);
+    padding: 10px 14px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .dictation-btn:hover:not(:disabled) {
+    background: rgba(16, 22, 22, 0.18);
+  }
+
+  .dictation-btn.recording {
+    background: rgba(220, 53, 69, 0.9);
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(220, 53, 69, 0.3);
+  }
+
+  .dictation-btn:disabled {
     cursor: wait;
     opacity: 0.7;
   }

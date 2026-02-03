@@ -1,7 +1,9 @@
 <script>
-  import { getDisplayName } from '$lib/notes.js';
+  import { getDisplayName, filterNotes } from '$lib/notes.js';
 
   let { notes, windowStates, onToggleWindow, onAddNote, onDeleteNote, onClose } = $props();
+
+  const regularNotes = $derived(filterNotes(notes));
 </script>
 
 <aside class="sidebar" aria-label="Notes">
@@ -15,7 +17,7 @@
     <button class="primary-action" type="button" onclick={onAddNote}>New note</button>
   </div>
   <div class="sidebar-list" role="list">
-    {#each notes as note (note.id)}
+    {#each regularNotes as note (note.id)}
       {@const isOpen = windowStates[note.id]?.visible}
       {@const name = getDisplayName(note)}
       <div class:active={isOpen} class="sidebar-note" role="listitem">

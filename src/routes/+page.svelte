@@ -27,6 +27,7 @@
   import { AI_CONFIG } from '$lib/config.js';
   import OnboardingCard from '$lib/components/OnboardingCard.svelte';
   import Sidebar from '$lib/components/Sidebar.svelte';
+  import TranscriptList from '$lib/components/TranscriptList.svelte';
   import NoteWindow from '$lib/components/NoteWindow.svelte';
   import Instructions from '$lib/components/Instructions.svelte';
 
@@ -432,6 +433,12 @@
       onClose={() => sidebarOpen = false}
     />
     <button class="sidebar-overlay" type="button" aria-label="Close sidebar" onclick={() => sidebarOpen = false}></button>
+    <TranscriptList
+      {notes}
+      {windowStates}
+      onToggleWindow={toggleWindow}
+      onDeleteNote={deleteNote}
+    />
     <div class="top-actions">
       {#if notesLoading || notesError}
         <div class:warning={!!notesError} class="note-status" role="status" aria-live="polite">

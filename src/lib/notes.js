@@ -208,3 +208,25 @@ export const getFilenameParts = (filename = '') => {
 
 export const getDisplayName = (note) =>
   getFilenameParts(note?.filename || note?.path || '');
+
+/**
+ * Check if a note is a transcript (by type or path)
+ * @param {Partial<Note>} note
+ * @returns {boolean}
+ */
+export const isTranscript = (note) =>
+  note?.type === 'transcript' || (note?.path ?? '').startsWith('transcripts/');
+
+/**
+ * Filter notes to only regular notes (not transcripts)
+ * @param {Note[]} notes
+ * @returns {Note[]}
+ */
+export const filterNotes = (notes) => notes.filter((n) => !isTranscript(n));
+
+/**
+ * Filter notes to only transcripts
+ * @param {Note[]} notes
+ * @returns {Note[]}
+ */
+export const filterTranscripts = (notes) => notes.filter((n) => isTranscript(n));

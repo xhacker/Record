@@ -1,6 +1,6 @@
 <script>
   import { DEFAULT_WIDTH, DEFAULT_HEIGHT } from '$lib/windowManager.js';
-  import { getFilenameParts } from '$lib/notes.js';
+  import { getDisplayName } from '$lib/notes.js';
 
   let {
     note,
@@ -20,7 +20,6 @@
   let editingTitle = $state(false);
   let draftTitle = $state('');
 
-  const getDisplayName = (note) => getFilenameParts(note?.filename || note?.path || '');
   const displayName = $derived.by(() => getDisplayName(note));
   const status = $derived.by(() => {
     if (note?.saving) {

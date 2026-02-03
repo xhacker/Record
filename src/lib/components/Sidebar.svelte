@@ -1,9 +1,7 @@
 <script>
-  import { getFilenameParts } from '$lib/notes.js';
+  import { getDisplayName } from '$lib/notes.js';
 
   let { notes, windowStates, onToggleWindow, onAddNote, onDeleteNote, onClose } = $props();
-
-  const getDisplayName = (note) => getFilenameParts(note?.filename || note?.path || '');
 </script>
 
 <aside class="sidebar" aria-label="Notes">

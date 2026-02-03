@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import { browser } from '$app/environment';
   import { clearAuth, loadAuthToken, saveAuth } from '$lib/auth.js';
-  import { createNote, sortNotesByPath } from '$lib/notes.js';
+  import { createNote, sortNotesByPath, formatDateStamp, getNextDateFilename, normalizeNote } from '$lib/notes.js';
   import { loadNotesFromGitHub, writeNoteToGitHub, deleteNoteFromGitHub } from '$lib/github.js';
   import {
     loadWindowStates,
@@ -10,6 +10,7 @@
     persistStates,
     getOpenWindows,
     getNewWindowPosition,
+    snapToGrid,
     DEFAULT_WIDTH,
     DEFAULT_HEIGHT,
   } from '$lib/windowManager.js';
@@ -35,34 +36,6 @@
   let dragState = null;
   let resizeState = null;
   let initialized = false;
-
-  const formatDateStamp = (value = new Date()) => {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, '0');
-    const day = String(value.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const getNextDateFilename = (base, existingPaths) => {
-    let attempt = 1;
-    while (attempt < 500) {
-      const suffix = attempt === 1 ? '' : ` (${attempt})`;
-      const filename = `${base}${suffix}.md`;
-      if (!existingPaths.has(filename)) {
-        return filename;
-      }
-      attempt += 1;
-    }
-    return `${base}-${Date.now()}.md`;
-  };
-
-  const normalizeNote = (note) => ({
-    ...note,
-    savedContent: note.content ?? '',
-    dirty: false,
-    saving: false,
-    sha: note.sha ?? null,
-  });
 
   const updateNote = (noteId, updater) => {
     notes = notes.map((note) =>
@@ -269,12 +242,10 @@
 
   const onDrag = (event) => {
     if (!dragState) return;
-    const { snapToGrid } = import.meta.glob ? { snapToGrid: (v) => Math.round(v / 40) * 40 } : {};
-    const snap = (v) => Math.round(v / 40) * 40;
     const dx = event.clientX - dragState.startX;
     const dy = event.clientY - dragState.startY;
-    const newX = snap(Math.max(0, dragState.origX + dx));
-    const newY = snap(Math.max(0, dragState.origY + dy));
+    const newX = snapToGrid(Math.max(0, dragState.origX + dx));
+    const newY = snapToGrid(Math.max(0, dragState.origY + dy));
     const existing = windowStates[dragState.noteId];
     if (existing) {
       windowStates = { ...windowStates, [dragState.noteId]: { ...existing, x: newX, y: newY } };
@@ -299,12 +270,11 @@
 
   const onResize = (event) => {
     if (!resizeState) return;
-    const snap = (v) => Math.round(v / 40) * 40;
     const minSize = 160;
     const dx = event.clientX - resizeState.startX;
     const dy = event.clientY - resizeState.startY;
-    const newWidth = snap(Math.max(minSize, resizeState.origWidth + dx));
-    const newHeight = snap(Math.max(minSize, resizeState.origHeight + dy));
+    const newWidth = snapToGrid(Math.max(minSize, resizeState.origWidth + dx));
+    const newHeight = snapToGrid(Math.max(minSize, resizeState.origHeight + dy));
     const existing = windowStates[resizeState.noteId];
     if (existing) {
       windowStates = { ...windowStates, [resizeState.noteId]: { ...existing, width: newWidth, height: newHeight } };

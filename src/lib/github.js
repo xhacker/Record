@@ -238,3 +238,91 @@ export const readFileByPath = async (token, path) => {
     content,
   };
 };
+
+/**
+ * Write/create a file by path
+ * Used by the write_file agent tool
+ */
+export const writeFileByPath = async (token, path, content) => {
+  if (!path) {
+    throw new Error('Missing file path.');
+  }
+
+  const repo = await getDefaultRepo(token);
+  const encodedPath = encodePath(path);
+
+  // Try to get existing file for SHA (needed for updates)
+  let sha = null;
+  try {
+    const existing = await request(token, `/repos/${repo.owner}/${repo.name}/contents/${encodedPath}`);
+    sha = existing?.sha;
+  } catch {
+    // File doesn't exist, will create new
+  }
+
+  const body = {
+    message: sha ? `Update ${path}` : `Create ${path}`,
+    content: encodeBase64(content ?? ''),
+    branch: repo.defaultBranch,
+  };
+
+  if (sha) {
+    body.sha = sha;
+  }
+
+  const response = await request(token, `/repos/${repo.owner}/${repo.name}/contents/${encodedPath}`, {
+    method: 'PUT',
+    body,
+  });
+
+  return {
+    path,
+    sha: response?.content?.sha ?? null,
+    created: !sha,
+  };
+};
+
+/**
+ * Search notes by content (case-insensitive)
+ * Used by the search_notes agent tool
+ */
+export const searchNotes = async (token, query) => {
+  if (!query || !query.trim()) {
+    throw new Error('Missing search query.');
+  }
+
+  const repo = await getDefaultRepo(token);
+  const tree = await getRepoTree(token, repo.owner, repo.name, repo.defaultBranch);
+  const entries = Array.isArray(tree?.tree) ? tree.tree : [];
+
+  const markdownFiles = entries.filter(
+    (entry) => entry.type === 'blob' && entry.path?.toLowerCase().endsWith('.md')
+  );
+
+  const lowerQuery = query.toLowerCase();
+  const matches = [];
+
+  // Search through files (with concurrency limit)
+  await mapWithConcurrency(markdownFiles, 6, async (entry) => {
+    const content = await getBlobText(token, repo.owner, repo.name, entry.sha);
+    if (content.toLowerCase().includes(lowerQuery)) {
+      // Find matching lines for context
+      const lines = content.split('\n');
+      const matchingLines = lines
+        .map((line, idx) => ({ line, lineNumber: idx + 1 }))
+        .filter(({ line }) => line.toLowerCase().includes(lowerQuery))
+        .slice(0, 3); // Max 3 matching lines per file
+
+      matches.push({
+        path: entry.path,
+        type: entry.path.startsWith('transcripts/') ? 'transcript' : 'note',
+        matches: matchingLines.map(({ line, lineNumber }) => ({
+          lineNumber,
+          text: line.slice(0, 200), // Truncate long lines
+        })),
+      });
+    }
+  });
+
+  return matches.sort((a, b) => a.path.localeCompare(b.path));
+};

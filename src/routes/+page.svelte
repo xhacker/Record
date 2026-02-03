@@ -250,7 +250,17 @@
           // Execute each tool and add results
           for (const toolCall of payload.tool_calls) {
             const args = JSON.parse(toolCall.function.arguments || '{}');
-            const result = await executeTool(toolCall.function.name, args, authToken);
+            const toolContext = {
+              token: authToken,
+              notes,
+              windowStates,
+              openWindow: openWindowForAgent,
+              closeWindow,
+              moveWindow: moveWindowForAgent,
+              resizeWindow: resizeWindowForAgent,
+              refreshNotes: () => void loadFromGitHub(),
+            };
+            const result = await executeTool(toolCall.function.name, args, toolContext);
 
             messages.push({
               role: 'tool',
@@ -361,6 +371,34 @@
   const closeWindow = (noteId) => {
     if (windowStates[noteId]) {
       windowStates = { ...windowStates, [noteId]: { ...windowStates[noteId], visible: false } };
+      persistStates(windowStates);
+    }
+  };
+
+  // Agent tool window operations
+  const openWindowForAgent = (noteId) => {
+    const existing = windowStates[noteId];
+    if (existing?.visible) {
+      // Already open, just bring to front
+      windowStates = { ...windowStates, [noteId]: { ...existing, zIndex: topZ++ } };
+    } else if (existing) {
+      windowStates = { ...windowStates, [noteId]: { ...existing, visible: true, zIndex: topZ++ } };
+    } else {
+      windowStates = { ...windowStates, [noteId]: createWindowState(windowStates, topZ++) };
+    }
+    persistStates(windowStates);
+  };
+
+  const moveWindowForAgent = (noteId, x, y) => {
+    if (windowStates[noteId]) {
+      windowStates = { ...windowStates, [noteId]: { ...windowStates[noteId], x, y } };
+      persistStates(windowStates);
+    }
+  };
+
+  const resizeWindowForAgent = (noteId, width, height) => {
+    if (windowStates[noteId]) {
+      windowStates = { ...windowStates, [noteId]: { ...windowStates[noteId], width, height } };
       persistStates(windowStates);
     }
   };

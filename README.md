@@ -18,7 +18,7 @@ npm run dev
 
 **Grid**: 40px snap for all window positions and sizes
 
-**AI**: Ask panel creates a transcript note (single round only)
+**AI**: Ask panel with agent tools (multi-round tool calling)
 
 **Stack**: SvelteKit, Svelte 5
 
@@ -129,7 +129,7 @@ DELETE /repos/{owner}/{repo}/contents/{path}               # delete file
 
 1. Onboarding page with GitHub OAuth (PAT input for MVP) — done
 2. GitHub API service — done (read + write + create + rename + delete)
-3. Agent tools that call GitHub API directly
+3. Agent tools that call GitHub API directly — done
 
 ### After MVP
 1. Actual GitHub OAuth

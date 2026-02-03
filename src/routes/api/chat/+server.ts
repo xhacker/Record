@@ -6,12 +6,13 @@ import { getGroqClient } from '$lib/server/llm/groq'
 
 // Tool definitions for agent mode
 const agentTools = [
+  // File tools
   {
     type: 'function' as const,
     function: {
       name: 'list_files',
       description:
-        "List all notes and transcripts in the user's repository. Returns file paths and types (note or transcript).",
+        "List all notes and transcripts in the user's repository. Returns file paths and types.",
       parameters: {
         type: 'object',
         properties: {},
@@ -24,17 +25,159 @@ const agentTools = [
     function: {
       name: 'read_file',
       description:
-        'Read the content of a specific note or transcript. Use list_files first to find available files.',
+        'Read the content of a specific note or transcript.',
       parameters: {
         type: 'object',
         properties: {
           path: {
             type: 'string',
-            description:
-              'The file path to read (e.g., "notes/my-note.md" or "transcripts/2026-02-03T13:00:00-0800.md")',
+            description: 'The file path to read (e.g., "meeting-notes.md")',
           },
         },
         required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'write_file',
+      description:
+        'Create or update a note. Use this to save new content or modify existing notes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'The file path (e.g., "ideas.md"). Must end with .md',
+          },
+          content: {
+            type: 'string',
+            description: 'The markdown content to write',
+          },
+        },
+        required: ['path', 'content'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'search_notes',
+      description:
+        'Search for notes containing specific text. Returns matching files with context.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'The text to search for (case-insensitive)',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  // Canvas tools
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_canvas_state',
+      description:
+        'Get the current canvas state including size and open windows with their positions.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  // Window tools
+  {
+    type: 'function' as const,
+    function: {
+      name: 'open_window',
+      description:
+        'Open a note window on the canvas. The note must exist.',
+      parameters: {
+        type: 'object',
+        properties: {
+          noteId: {
+            type: 'string',
+            description: 'The note ID or path to open',
+          },
+        },
+        required: ['noteId'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'close_window',
+      description:
+        'Close a note window on the canvas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          noteId: {
+            type: 'string',
+            description: 'The note ID or path to close',
+          },
+        },
+        required: ['noteId'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'move_window',
+      description:
+        'Move a note window to a new position. Coordinates snap to 40px grid.',
+      parameters: {
+        type: 'object',
+        properties: {
+          noteId: {
+            type: 'string',
+            description: 'The note ID or path',
+          },
+          x: {
+            type: 'number',
+            description: 'X position in pixels',
+          },
+          y: {
+            type: 'number',
+            description: 'Y position in pixels',
+          },
+        },
+        required: ['noteId', 'x', 'y'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'resize_window',
+      description:
+        'Resize a note window. Dimensions snap to 40px grid. Minimum 160px.',
+      parameters: {
+        type: 'object',
+        properties: {
+          noteId: {
+            type: 'string',
+            description: 'The note ID or path',
+          },
+          width: {
+            type: 'number',
+            description: 'Width in pixels',
+          },
+          height: {
+            type: 'number',
+            description: 'Height in pixels',
+          },
+        },
+        required: ['noteId', 'width', 'height'],
       },
     },
   },

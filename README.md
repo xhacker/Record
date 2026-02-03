@@ -18,6 +18,8 @@ npm run dev
 
 **Grid**: 40px snap for all window positions and sizes
 
+**AI**: Ask panel creates a transcript note (single round only)
+
 **Stack**: SvelteKit, Svelte 5
 
 ---
@@ -71,8 +73,26 @@ npm run dev
 ```
 meeting-notes.md
 ideas.md
+transcripts/
+  2026-02-03T13:00:00-0800.md
 .record/
   states.json
+```
+
+### Transcript Format
+
+Transcripts are stored as Markdown files with frontmatter and a user bubble.
+Assistant content is plain text (no Markdown rendering yet).
+
+```
+---
+type: transcript
+thread_id: 2026-02-03T13:00:00-0800
+---
+
+<div class="bubble user">Your question here.</div>
+
+Assistant response here.
 ```
 
 ### GitHub API

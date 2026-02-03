@@ -1,4 +1,4 @@
-const COMMAND_MODEL = 'kimi';
+import { AI_CONFIG } from '$lib/config.js';
 
 export const getParagraphBounds = (text, index) => {
   const clampedIndex = Math.min(Math.max(index, 0), text.length);
@@ -66,9 +66,9 @@ export const executeSlashCommand = async (content, cursor) => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       prompt: buildCommandPrompt({ paragraphWithoutCommand, commandText: command.commandText }),
-      model: COMMAND_MODEL,
-      temperature: 0.3,
-      max_completion_tokens: 600,
+      model: AI_CONFIG.commandModel,
+      temperature: AI_CONFIG.commandTemperature,
+      max_completion_tokens: AI_CONFIG.commandMaxTokens,
       top_p: 1,
     }),
   });

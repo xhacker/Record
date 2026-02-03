@@ -1,6 +1,6 @@
 <script>
   import { DEFAULT_WIDTH, DEFAULT_HEIGHT } from '$lib/windowManager.js';
-  import { getDisplayName } from '$lib/notes.js';
+  import { getDisplayName, parseTranscriptContent } from '$lib/notes.js';
 
   let {
     note,
@@ -14,6 +14,11 @@
     onContentChange,
     onContentKeydown,
     onContentBlur,
+    followupValue = '',
+    followupEnabled = false,
+    onFollowupChange,
+    onFollowupSubmit,
+    onFollowupKeydown,
     contentElRef = $bindable(),
   } = $props();
 
@@ -21,6 +26,8 @@
   let draftTitle = $state('');
 
   const displayName = $derived.by(() => getDisplayName(note));
+  const isTranscript = $derived.by(() => note?.type === 'transcript');
+  const transcript = $derived.by(() => (isTranscript ? parseTranscriptContent(note?.content ?? '') : null));
   const status = $derived.by(() => {
     if (note?.saving) {
       return { label: 'Saving', ellipsis: true };
@@ -54,6 +61,7 @@
 </script>
 
 <section
+  class:transcript={isTranscript}
   class="note"
   aria-label="Note"
   style="left: {windowState.x}px; top: {windowState.y}px; width: {windowState.width ?? DEFAULT_WIDTH}px; height: {windowState.height ?? DEFAULT_HEIGHT}px; z-index: {windowState.zIndex};"
@@ -101,16 +109,41 @@
       </span>
     {/if}
   </div>
-  <textarea
-    class="note-content"
-    placeholder="Write your note..."
-    value={note.content}
-    bind:this={contentElRef}
-    oninput={(e) => onContentChange(e.target.value)}
-    onkeydown={onContentKeydown}
-    onblur={onContentBlur}
-    aria-busy={commandPending}
-  ></textarea>
+  {#if isTranscript}
+    <div class="note-content transcript-body" aria-live="polite">
+      {#if transcript?.userText}
+        <div class="bubble user">{transcript.userText}</div>
+      {/if}
+      {#if transcript?.assistantText}
+        <div class="assistant-text">{transcript.assistantText}</div>
+      {/if}
+    </div>
+    <div class="transcript-followup">
+      <input
+        class="followup-input"
+        type="text"
+        value={followupValue}
+        placeholder={followupEnabled ? 'Ask a follow-up...' : 'Follow-ups coming soon...'}
+        disabled={!followupEnabled}
+        oninput={(e) => onFollowupChange?.(e.target.value)}
+        onkeydown={onFollowupKeydown}
+      />
+      <button class="followup-send" type="button" onclick={onFollowupSubmit} disabled={!followupEnabled}>
+        Ask
+      </button>
+    </div>
+  {:else}
+    <textarea
+      class="note-content"
+      placeholder="Write your note..."
+      value={note.content}
+      bind:this={contentElRef}
+      oninput={(e) => onContentChange(e.target.value)}
+      onkeydown={onContentKeydown}
+      onblur={onContentBlur}
+      aria-busy={commandPending}
+    ></textarea>
+  {/if}
   <div
     class="note-resize-handle"
     onpointerdown={onResizeStart}
@@ -135,6 +168,10 @@
     overflow: hidden;
     user-select: none;
     pointer-events: auto;
+  }
+
+  .note.transcript {
+    grid-template-rows: auto 1fr auto;
   }
 
   .note-titlebar {
@@ -253,6 +290,81 @@
 
   .note-content::placeholder {
     color: var(--muted);
+  }
+
+  .transcript-body {
+    padding: clamp(20px, 4vw, 28px);
+    overflow-y: auto;
+    display: grid;
+    gap: 16px;
+    color: var(--ink);
+    user-select: text;
+  }
+
+  .transcript-body .bubble.user {
+    align-self: flex-end;
+    max-width: min(520px, 90%);
+    padding: 10px 14px;
+    border-radius: 16px 16px 4px 16px;
+    background: linear-gradient(140deg, rgba(234, 129, 70, 0.2), rgba(214, 90, 24, 0.2));
+    border: 1px solid rgba(214, 90, 24, 0.2);
+    color: rgba(82, 39, 19, 0.95);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    box-shadow: 0 12px 20px rgba(214, 90, 24, 0.12);
+    white-space: pre-wrap;
+  }
+
+  .assistant-text {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    color: rgba(16, 22, 22, 0.85);
+  }
+
+  .transcript-followup {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    padding: 12px 16px 16px;
+    border-top: 1px solid rgba(16, 22, 22, 0.08);
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.7), rgba(245, 240, 235, 0.85));
+  }
+
+  .followup-input {
+    border-radius: 999px;
+    border: 1px solid rgba(16, 22, 22, 0.12);
+    padding: 8px 14px;
+    font-size: 0.9rem;
+    outline: none;
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  .followup-input:disabled {
+    background: rgba(250, 248, 246, 0.9);
+    color: rgba(79, 91, 91, 0.6);
+    cursor: not-allowed;
+  }
+
+  .followup-input::placeholder {
+    color: rgba(79, 91, 91, 0.75);
+  }
+
+  .followup-send {
+    border: none;
+    background: rgba(214, 90, 24, 0.9);
+    color: #fff;
+    padding: 0 18px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.01em;
+  }
+
+  .followup-send:disabled {
+    background: rgba(214, 90, 24, 0.35);
+    cursor: not-allowed;
   }
 
   .note-resize-handle {

@@ -41,12 +41,13 @@ export const createNote = async (note, authToken, repoMeta, updateNote) => {
   if (!authToken) return { success: true };
 
   return withSaving(note.id, updateNote, async () => {
-    const { repo, sha } = await writeNoteToGitHub(authToken, { path: note.path, content: '' }, repoMeta);
+    const content = note.content ?? '';
+    const { repo, sha } = await writeNoteToGitHub(authToken, { path: note.path, content }, repoMeta);
     updateNote(note.id, (n) => ({
       ...n,
       saving: false,
-      savedContent: '',
-      dirty: n.content !== '',
+      savedContent: content,
+      dirty: n.content !== content,
       sha: sha ?? n.sha,
     }));
     return { repo };

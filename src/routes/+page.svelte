@@ -2,7 +2,16 @@
   import { tick } from 'svelte';
   import { browser } from '$app/environment';
   import { loadAuthToken, saveAuth } from '$lib/auth.js';
-  import { createNote, sortNotesByPath, formatDateStamp, getNextDateFilename, normalizeNote } from '$lib/notes.js';
+  import {
+    createNote,
+    sortNotesByPath,
+    formatDateStamp,
+    getNextDateFilename,
+    normalizeNote,
+    formatTranscriptTimestamp,
+    buildTranscriptContent,
+    getUniquePath,
+  } from '$lib/notes.js';
   import * as remote from '$lib/remote.js';
   import {
     loadWindowStates,
@@ -15,6 +24,7 @@
     DEFAULT_HEIGHT,
   } from '$lib/windowManager.js';
   import { executeSlashCommand } from '$lib/slashCommand.js';
+  import { AI_CONFIG } from '$lib/config.js';
   import OnboardingCard from '$lib/components/OnboardingCard.svelte';
   import Sidebar from '$lib/components/Sidebar.svelte';
   import NoteWindow from '$lib/components/NoteWindow.svelte';
@@ -31,6 +41,15 @@
   let repoMeta = $state(null);
   let notesLoading = $state(false);
   let notesError = $state('');
+  let askOpen = $state(false);
+  let askPrompt = $state('');
+  let askPending = $state(false);
+  let askError = $state('');
+  let followupDrafts = $state({});
+
+  const ASK_LABEL = 'Ask AI';
+  const ASK_PLACEHOLDER = 'Ask a question...';
+  const FOLLOWUP_ENABLED = false;
 
   let contentEls = $state({});
   let dragState = null;
@@ -52,6 +71,13 @@
     const dirty = value !== (note.savedContent ?? '');
     updateNote(noteId, (n) => ({ ...n, content: value, dirty }));
   };
+
+  const updateFollowupDraft = (noteId, value) => {
+    followupDrafts = { ...followupDrafts, [noteId]: value };
+  };
+
+  const getExistingPaths = () =>
+    new Set(notes.map((n) => n.path ?? n.id).filter(Boolean));
 
   const moveNoteIdentity = (fromId, toId) => {
     if (fromId === toId) return;
@@ -121,10 +147,10 @@
     }
   };
 
-  const addNote = async () => {
+  // Shared helper for inserting notes (used by addNote and addTranscript)
+  const insertAndSyncNote = async (note) => {
     notesError = '';
-    const filename = getNextDateFilename(formatDateStamp(), new Set(notes.map((n) => n.path ?? n.id).filter(Boolean)));
-    const fresh = normalizeNote(createNote(filename));
+    const fresh = { ...note };
     if (authToken) fresh.saving = true;
 
     notes = [fresh, ...notes];
@@ -138,6 +164,74 @@
     if (!result.success) notesError = result.error;
   };
 
+  const addNote = async () => {
+    const filename = getNextDateFilename(formatDateStamp(), getExistingPaths());
+    await insertAndSyncNote(normalizeNote(createNote(filename)));
+  };
+
+  const addTranscript = async ({ prompt, response }) => {
+    const baseStamp = formatTranscriptTimestamp(new Date());
+    const path = getUniquePath(`transcripts/${baseStamp}.md`, getExistingPaths());
+    const threadId = (path.split('/').pop() || baseStamp).replace(/\.md$/i, '');
+    const content = buildTranscriptContent({
+      threadId,
+      userPrompt: prompt,
+      assistantContent: response,
+    });
+    await insertAndSyncNote(normalizeNote(createNote(path, content, 'transcript')));
+  };
+
+  const openAskPanel = () => {
+    askPrompt = '';
+    askError = '';
+    askOpen = true;
+  };
+
+  const closeAskPanel = () => {
+    askOpen = false;
+    askError = '';
+  };
+
+  const submitAsk = async () => {
+    if (askPending) return;
+    const prompt = askPrompt.trim();
+    if (!prompt) {
+      askError = 'Write a question first.';
+      return;
+    }
+
+    askPending = true;
+    askError = '';
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          model: AI_CONFIG.askModel,
+          temperature: AI_CONFIG.askTemperature,
+          max_completion_tokens: AI_CONFIG.askMaxTokens,
+          top_p: 1,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? 'Failed to ask AI.');
+      }
+      const assistantContent = (payload?.content ?? '').trim();
+      if (!assistantContent) {
+        throw new Error('AI response was empty.');
+      }
+      await addTranscript({ prompt, response: assistantContent });
+      askOpen = false;
+      askPrompt = '';
+    } catch (error) {
+      askError = error?.message ?? 'Failed to ask AI.';
+    } finally {
+      askPending = false;
+    }
+  };
+
   const removeNoteLocally = (id) => {
     if (!notes.find((n) => n.id === id)) return 0;
     const { [id]: _, ...rest } = windowStates;
@@ -145,6 +239,8 @@
     persistStates(windowStates);
     const { [id]: __, ...restEls } = contentEls;
     contentEls = restEls;
+    const { [id]: ___, ...restFollowups } = followupDrafts;
+    followupDrafts = restFollowups;
     notes = notes.filter((n) => n.id !== id);
     return notes.length;
   };
@@ -327,15 +423,6 @@
   {#if !hasAuth}
     <OnboardingCard onSubmit={handleAuth} onSkip={handleSkip} />
   {:else}
-    {#if notesLoading || notesError}
-      <div class:warning={!!notesError} class="note-status" role="status" aria-live="polite">
-        {#if notesLoading}
-          Loading notes from GitHub...
-        {:else}
-          {notesError}
-        {/if}
-      </div>
-    {/if}
     <Sidebar
       {notes}
       {windowStates}
@@ -345,6 +432,54 @@
       onClose={() => sidebarOpen = false}
     />
     <button class="sidebar-overlay" type="button" aria-label="Close sidebar" onclick={() => sidebarOpen = false}></button>
+    <div class="top-actions">
+      {#if notesLoading || notesError}
+        <div class:warning={!!notesError} class="note-status" role="status" aria-live="polite">
+          {#if notesLoading}
+            Loading notes from GitHub...
+          {:else}
+            {notesError}
+          {/if}
+        </div>
+      {/if}
+      <div class="ask-stack">
+        <button class="ask-ai" type="button" onclick={openAskPanel} disabled={askPending}>
+          {ASK_LABEL}
+        </button>
+        {#if askOpen}
+          <div class="ask-panel" role="dialog" aria-label="Ask AI">
+            <p class="ask-panel-title">Ask the record</p>
+            <textarea
+              class="ask-input"
+              rows="3"
+              placeholder={ASK_PLACEHOLDER}
+              value={askPrompt}
+              oninput={(e) => { askPrompt = e.target.value; }}
+              onkeydown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  submitAsk();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  closeAskPanel();
+                }
+              }}
+            ></textarea>
+            {#if askError}
+              <p class="ask-error" role="alert">{askError}</p>
+            {/if}
+            <div class="ask-panel-actions">
+              <button class="ask-submit" type="button" onclick={submitAsk} disabled={askPending}>
+                {askPending ? 'Thinking...' : 'Ask'}
+              </button>
+              <button class="ask-cancel" type="button" onclick={closeAskPanel} disabled={askPending}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
     <div class="note-shell canvas">
       <header class="note-header">
         <button class="sidebar-toggle" type="button" onclick={() => sidebarOpen = true}>
@@ -358,6 +493,9 @@
             {note}
             windowState={win}
             {commandPending}
+            followupValue={followupDrafts[win.noteId] ?? ''}
+            followupEnabled={FOLLOWUP_ENABLED}
+            onFollowupChange={(value) => updateFollowupDraft(win.noteId, value)}
             onClose={() => closeWindow(win.noteId)}
             onFocus={() => bringToFront(win.noteId)}
             onDragStart={(e) => startDrag(win.noteId, e)}
@@ -439,6 +577,110 @@
     pointer-events: none;
   }
 
+  .top-actions {
+    position: fixed;
+    top: 24px;
+    right: 28px;
+    display: grid;
+    gap: 10px;
+    z-index: var(--layer-sidebar);
+    pointer-events: auto;
+  }
+
+  .ask-stack {
+    display: grid;
+    justify-items: end;
+    gap: 10px;
+  }
+
+  .ask-ai {
+    border: none;
+    background: rgba(214, 90, 24, 0.9);
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    box-shadow: 0 10px 20px rgba(214, 90, 24, 0.25);
+  }
+
+  .ask-ai:disabled {
+    cursor: wait;
+    opacity: 0.7;
+  }
+
+  .ask-panel {
+    width: min(360px, 90vw);
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    border: 1px solid rgba(16, 22, 22, 0.1);
+    padding: 16px;
+    box-shadow: 0 20px 40px rgba(16, 22, 22, 0.12);
+    display: grid;
+    gap: 10px;
+  }
+
+  .ask-panel-title {
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(16, 22, 22, 0.55);
+    font-weight: 600;
+  }
+
+  .ask-input {
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid rgba(16, 22, 22, 0.12);
+    padding: 10px 12px;
+    font-size: 0.95rem;
+    resize: none;
+    outline: none;
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  .ask-error {
+    color: rgba(122, 48, 16, 0.9);
+    font-size: 0.78rem;
+  }
+
+  .ask-panel-actions {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: end;
+    gap: 8px;
+  }
+
+  .ask-submit {
+    border: none;
+    background: rgba(16, 22, 22, 0.9);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .ask-submit:disabled {
+    cursor: wait;
+    opacity: 0.7;
+  }
+
+  .ask-cancel {
+    border: none;
+    background: rgba(16, 22, 22, 0.1);
+    color: rgba(16, 22, 22, 0.7);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
   .note-header {
     display: flex;
     align-items: center;
@@ -447,9 +689,6 @@
   }
 
   .note-status {
-    position: fixed;
-    top: 24px;
-    right: 28px;
     padding: 10px 14px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.8);
@@ -457,7 +696,6 @@
     font-size: 0.72rem;
     letter-spacing: 0.02em;
     box-shadow: 0 8px 18px rgba(210, 160, 120, 0.18);
-    z-index: var(--layer-sidebar);
     pointer-events: none;
   }
 

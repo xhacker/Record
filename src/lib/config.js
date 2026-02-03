@@ -12,4 +12,7 @@ export const AI_CONFIG = {
   // Token limits
   askMaxTokens: 1200,
   commandMaxTokens: 600,
+
+  // Enable agent tools (list_files, read_file, etc.) for Ask AI
+  useTools: true,
 };

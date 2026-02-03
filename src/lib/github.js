@@ -188,3 +188,53 @@ export const deleteNoteFromGitHub = async (token, path, sha, repoOverride = null
 
   return { repo };
 };
+
+// ============================================
+// Agent tool functions
+// ============================================
+
+/**
+ * List all markdown file paths in the repository (lightweight, no content)
+ * Used by the list_files agent tool
+ */
+export const listFilePaths = async (token) => {
+  const repo = await getDefaultRepo(token);
+  const tree = await getRepoTree(token, repo.owner, repo.name, repo.defaultBranch);
+  const entries = Array.isArray(tree?.tree) ? tree.tree : [];
+
+  const files = entries
+    .filter((entry) => entry.type === 'blob' && entry.path?.toLowerCase().endsWith('.md'))
+    .map((entry) => ({
+      path: entry.path,
+      type: entry.path.startsWith('transcripts/') ? 'transcript' : 'note',
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+
+  return files;
+};
+
+/**
+ * Read a single file's content by path
+ * Used by the read_file agent tool
+ */
+export const readFileByPath = async (token, path) => {
+  if (!path) {
+    throw new Error('Missing file path.');
+  }
+
+  const repo = await getDefaultRepo(token);
+  const encodedPath = encodePath(path);
+
+  const response = await request(token, `/repos/${repo.owner}/${repo.name}/contents/${encodedPath}`);
+
+  if (!response?.content) {
+    throw new Error(`File not found: ${path}`);
+  }
+
+  const content = decodeBase64(response.content);
+
+  return {
+    path,
+    content,
+  };
+};

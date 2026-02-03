@@ -24,6 +24,7 @@
     DEFAULT_HEIGHT,
   } from '$lib/windowManager.js';
   import { executeSlashCommand } from '$lib/slashCommand.js';
+  import { executeTool } from '$lib/tools.js';
   import { AI_CONFIG } from '$lib/config.js';
   import OnboardingCard from '$lib/components/OnboardingCard.svelte';
   import Sidebar from '$lib/components/Sidebar.svelte';
@@ -203,29 +204,78 @@
 
     askPending = true;
     askError = '';
+
+    const MAX_TOOL_ROUNDS = 5;
+    let messages = null; // null = use prompt, array = use messages
+    let rounds = 0;
+
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          prompt,
+      while (rounds < MAX_TOOL_ROUNDS) {
+        rounds++;
+
+        const requestBody = {
           model: AI_CONFIG.askModel,
           temperature: AI_CONFIG.askTemperature,
           max_completion_tokens: AI_CONFIG.askMaxTokens,
           top_p: 1,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? 'Failed to ask AI.');
+          useTools: AI_CONFIG.useTools && !!authToken,
+          ...(messages ? { messages } : { prompt }),
+        };
+
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error ?? 'Failed to ask AI.');
+        }
+
+        // If there are tool calls, execute them on the client
+        if (payload.tool_calls && payload.tool_calls.length > 0) {
+          // Initialize messages array if first tool round
+          if (!messages) {
+            messages = [{ role: 'user', content: prompt }];
+          }
+
+          // Add assistant message with tool calls
+          messages.push({
+            role: 'assistant',
+            content: payload.assistant_content || '',
+            tool_calls: payload.tool_calls,
+          });
+
+          // Execute each tool and add results
+          for (const toolCall of payload.tool_calls) {
+            const args = JSON.parse(toolCall.function.arguments || '{}');
+            const result = await executeTool(toolCall.function.name, args, authToken);
+
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: result,
+            });
+          }
+
+          // Continue the loop
+          continue;
+        }
+
+        // No tool calls, we have the final response
+        const assistantContent = (payload?.content ?? '').trim();
+        if (!assistantContent) {
+          throw new Error('AI response was empty.');
+        }
+
+        await addTranscript({ prompt, response: assistantContent });
+        askOpen = false;
+        askPrompt = '';
+        return;
       }
-      const assistantContent = (payload?.content ?? '').trim();
-      if (!assistantContent) {
-        throw new Error('AI response was empty.');
-      }
-      await addTranscript({ prompt, response: assistantContent });
-      askOpen = false;
-      askPrompt = '';
+
+      throw new Error('Too many tool calling rounds.');
     } catch (error) {
       askError = error?.message ?? 'Failed to ask AI.';
     } finally {

@@ -99,9 +99,9 @@ Assistant response here.
 
 ```
 GET  /repos/{owner}/{repo}/git/trees/{branch}?recursive=1  # full tree
-GET  /repos/{owner}/{repo}/contents/{path}                  # read file
-PUT  /repos/{owner}/{repo}/contents/{path}                  # write file
-DELETE /repos/{owner}/{repo}/contents/{path}                # delete file
+GET  /repos/{owner}/{repo}/contents/{path}                 # read file
+PUT  /repos/{owner}/{repo}/contents/{path}                 # write file
+DELETE /repos/{owner}/{repo}/contents/{path}               # delete file
 ```
 
 ---

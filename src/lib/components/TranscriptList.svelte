@@ -73,7 +73,6 @@
     color: rgba(16, 22, 22, 0.5);
     font-weight: 600;
     text-align: right;
-    padding-right: 4px;
   }
 
   .transcript-pills {
@@ -88,14 +87,15 @@
   .transcript-pill-wrapper {
     position: relative;
     display: flex;
+    flex-direction: row-reverse;
     align-items: center;
     gap: 4px;
   }
 
   .transcript-pill {
-    border: 1px solid rgba(16, 22, 22, 0.08);
-    background: rgba(255, 255, 255, 0.85);
-    color: var(--muted);
+    border: 1px solid transparent;
+    background: rgba(16, 22, 22, 0.04);
+    color: rgba(79, 91, 91, 0.6);
     padding: 6px 12px;
     border-radius: 999px;
     font-size: 0.72rem;
@@ -103,12 +103,11 @@
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s ease;
-    box-shadow: 0 4px 12px rgba(16, 22, 22, 0.06);
   }
 
   .transcript-pill:hover {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: rgba(16, 22, 22, 0.12);
+    background: rgba(16, 22, 22, 0.08);
+    color: rgba(79, 91, 91, 0.85);
   }
 
   .transcript-pill.active {

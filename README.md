@@ -18,6 +18,8 @@ npm run dev
 
 **Grid**: 40px snap for all window positions and sizes
 
+**Sidebar**: Note pills wrap long filenames (no horizontal scrolling)
+
 **AI**: Ask panel with agent tools (multi-round tool calling)
 
 **Stack**: SvelteKit, Svelte 5

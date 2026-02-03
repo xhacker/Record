@@ -113,9 +113,10 @@
     background: #fdf3ea;
     box-shadow: 0 8px 18px rgba(210, 160, 120, 0.1), 0 2px 4px rgba(16, 22, 22, 0.02);
     transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-    border-radius: 999px;
-    padding: 0 84px 0 16px;
-    height: 44px;
+    /* Match the single-line pill rounding (44px / 2). */
+    border-radius: 22px;
+    padding: 10px 84px 10px 16px;
+    min-height: 44px;
     width: 100%;
     display: flex;
     align-items: center;
@@ -136,23 +137,21 @@
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.15;
     max-width: 100%;
-    display: inline-flex;
-    align-items: baseline;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .note-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .note-ext {
     color: rgba(16, 22, 22, 0.45);
     font-weight: 500;
-    flex-shrink: 0;
   }
 
   .note-delete {

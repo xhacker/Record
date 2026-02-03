@@ -66,12 +66,11 @@ npm run dev
 - No server storage needed (privacy)
 - Offline support via IndexedDB
 
-### Repo Structure
+### Notes Storage Repo Structure
 
 ```
-notes/
-  meeting-notes.md
-  ideas.md
+meeting-notes.md
+ideas.md
 .record/
   states.json
 ```

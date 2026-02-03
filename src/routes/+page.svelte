@@ -355,8 +355,10 @@
             return;
           }
 
-          // Submit directly to Ask AI flow
+          // Show transcribed text in Ask panel, then submit
           askPrompt = text;
+          askOpen = true;
+          askError = '';
           dictationPending = false;
           await submitAsk();
         } catch (error) {

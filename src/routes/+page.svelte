@@ -1,16 +1,16 @@
 <script>
   import { tick } from 'svelte';
   import { browser } from '$app/environment';
-  import { clearAuth, loadAuthToken, saveAuth } from '$lib/auth.js';
+  import { loadAuthToken, saveAuth } from '$lib/auth.js';
   import { createNote, sortNotesByPath, formatDateStamp, getNextDateFilename, normalizeNote } from '$lib/notes.js';
-  import { loadNotesFromGitHub, writeNoteToGitHub, deleteNoteFromGitHub } from '$lib/github.js';
+  import * as remote from '$lib/remote.js';
   import {
     loadWindowStates,
     getTopZ,
     persistStates,
     getOpenWindows,
-    getNewWindowPosition,
     snapToGrid,
+    createWindowState,
     DEFAULT_WIDTH,
     DEFAULT_HEIGHT,
   } from '$lib/windowManager.js';
@@ -37,170 +37,164 @@
   let resizeState = null;
   let initialized = false;
 
+  // Note state helpers
   const updateNote = (noteId, updater) => {
-    notes = notes.map((note) =>
-      note.id === noteId ? updater(note) : note
-    );
+    notes = notes.map((note) => note.id === noteId ? updater(note) : note);
+  };
+
+  const updateNotes = (updater) => {
+    notes = updater(notes);
   };
 
   const updateNoteContent = (noteId, value) => {
-    const note = notes.find((entry) => entry.id === noteId);
+    const note = notes.find((n) => n.id === noteId);
     if (!note) return;
-    const savedContent = note.savedContent ?? '';
-    const dirty = value !== savedContent;
-    updateNote(noteId, (entry) => ({ ...entry, content: value, dirty }));
+    const dirty = value !== (note.savedContent ?? '');
+    updateNote(noteId, (n) => ({ ...n, content: value, dirty }));
   };
 
   const moveNoteIdentity = (fromId, toId) => {
     if (fromId === toId) return;
-    const windowState = windowStates[fromId];
-    if (windowState) {
-      const { [fromId]: _, ...remaining } = windowStates;
-      windowStates = { ...remaining, [toId]: windowState };
+    if (windowStates[fromId]) {
+      const { [fromId]: ws, ...rest } = windowStates;
+      windowStates = { ...rest, [toId]: ws };
       persistStates(windowStates);
     }
-    const contentEl = contentEls[fromId];
-    if (contentEl) {
-      const { [fromId]: __, ...remaining } = contentEls;
-      contentEls = { ...remaining, [toId]: contentEl };
+    if (contentEls[fromId]) {
+      const { [fromId]: el, ...rest } = contentEls;
+      contentEls = { ...rest, [toId]: el };
     }
   };
 
-  const renameNote = async (noteId, nextBase) => {
-    const note = notes.find((entry) => entry.id === noteId);
+  // GitHub sync operations
+  const saveNote = async (noteId) => {
+    const note = notes.find((n) => n.id === noteId);
     if (!note) return;
+    notesError = '';
+    const result = await remote.saveNote(note, authToken, repoMeta, updateNote);
+    if (result.result?.repo) repoMeta = result.result.repo;
+    if (!result.success) notesError = result.error;
+  };
+
+  const renameNote = async (noteId, nextBase) => {
+    const note = notes.find((n) => n.id === noteId);
+    if (!note) return;
+
     const trimmed = (nextBase ?? '').toString().trim();
     const safeBase = (trimmed.replace(/\.md$/i, '').replace(/[\\/]/g, '-')) || `untitled-${Date.now()}`;
     const directory = note.path?.includes('/') ? `${note.path.split('/').slice(0, -1).join('/')}/` : '';
     const filename = `${safeBase}.md`;
     const nextPath = `${directory}${filename}`;
     const currentPath = note.path ?? note.id;
-    if (!nextPath || nextPath === currentPath) return;
 
-    const conflict = notes.some((entry) =>
-      (entry.path ?? entry.id) === nextPath && entry.id !== noteId
-    );
-    if (conflict) {
-      notesError = `A note named "${filename}" already exists. Choose a different name.`;
+    if (!nextPath || nextPath === currentPath) return;
+    if (notes.some((n) => (n.path ?? n.id) === nextPath && n.id !== noteId)) {
+      notesError = `A note named "${filename}" already exists.`;
       return;
     }
 
+    // Local-only mode
     if (!authToken) {
-      notes = sortNotesByPath(notes.map((entry) =>
-        entry.id === noteId ? { ...entry, id: nextPath, path: nextPath, filename } : entry
+      notes = sortNotesByPath(notes.map((n) =>
+        n.id === noteId ? { ...n, id: nextPath, path: nextPath, filename } : n
       ));
       moveNoteIdentity(noteId, nextPath);
       return;
     }
 
-    if (note.dirty) {
-      await saveNote(noteId);
-    }
-
-    const refreshed = notes.find((entry) => entry.id === noteId);
+    // Save first if dirty
+    if (note.dirty) await saveNote(noteId);
+    const refreshed = notes.find((n) => n.id === noteId);
     if (!refreshed || refreshed.dirty) {
       notesError = 'Save the note before renaming.';
       return;
     }
 
     notesError = '';
-    updateNote(noteId, (entry) => ({ ...entry, saving: true }));
-
-    try {
-      const { repo, sha: nextSha } = await writeNoteToGitHub(
-        authToken,
-        { path: nextPath, content: refreshed.content ?? '' },
-        repoMeta,
-        { message: `Rename ${currentPath} to ${nextPath}` }
-      );
-      repoMeta = repo;
-
-      const previousSha = refreshed.sha;
-      notes = sortNotesByPath(notes.map((entry) =>
-        entry.id === noteId
-          ? {
-              ...entry,
-              id: nextPath,
-              path: nextPath,
-              filename,
-              sha: nextSha ?? entry.sha,
-              saving: false,
-              savedContent: entry.content ?? '',
-              dirty: false,
-            }
-          : entry
-      ));
-      moveNoteIdentity(noteId, nextPath);
-
-      if (previousSha) {
-        try {
-          await deleteNoteFromGitHub(
-            authToken,
-            currentPath,
-            previousSha,
-            repoMeta,
-            { message: `Rename ${currentPath} to ${nextPath}` }
-          );
-        } catch (error) {
-          notesError = error?.message ?? 'Renamed, but failed to remove the old file.';
-        }
-      } else {
-        notesError = 'Renamed, but missing the old file hash to remove it.';
-      }
-    } catch (error) {
-      updateNote(noteId, (entry) => ({ ...entry, saving: false }));
-      if (error?.status === 422) {
-        notesError = `A note named "${filename}" already exists. Choose a different name.`;
-      } else {
-        notesError = error?.message ?? 'Failed to rename note on GitHub.';
-      }
+    const result = await remote.renameNote(refreshed, nextPath, filename, authToken, repoMeta, updateNote, updateNotes);
+    if (result.success) {
+      moveNoteIdentity(noteId, result.result.newId);
+      repoMeta = result.result.repo;
+      if (result.result.deleteError) notesError = result.result.deleteError;
+    } else {
+      notesError = result.error?.includes('422') ? `A note named "${filename}" already exists.` : result.error;
     }
   };
 
-  const saveNote = async (noteId) => {
-    const note = notes.find((entry) => entry.id === noteId);
-    if (!note || note.saving || !note.dirty) return;
-    if (!authToken) return;
+  const addNote = async () => {
+    notesError = '';
+    const filename = getNextDateFilename(formatDateStamp(), new Set(notes.map((n) => n.path ?? n.id).filter(Boolean)));
+    const fresh = normalizeNote(createNote(filename));
+    if (authToken) fresh.saving = true;
 
-    const path = note.sha ? (note.id || note.path) : (note.path || note.id);
-    if (!path) {
-      notesError = 'Missing note path for GitHub write-back.';
+    notes = [fresh, ...notes];
+    windowStates = { ...windowStates, [fresh.id]: createWindowState(windowStates, topZ++) };
+    persistStates(windowStates);
+    sidebarOpen = false;
+
+    if (!authToken) return;
+    const result = await remote.createNote(fresh, authToken, repoMeta, updateNote);
+    if (result.result?.repo) repoMeta = result.result.repo;
+    if (!result.success) notesError = result.error;
+  };
+
+  const removeNoteLocally = (id) => {
+    if (!notes.find((n) => n.id === id)) return 0;
+    const { [id]: _, ...rest } = windowStates;
+    windowStates = rest;
+    persistStates(windowStates);
+    const { [id]: __, ...restEls } = contentEls;
+    contentEls = restEls;
+    notes = notes.filter((n) => n.id !== id);
+    return notes.length;
+  };
+
+  const deleteNote = async (id) => {
+    const target = notes.find((n) => n.id === id);
+    if (!target) return;
+    if (!window.confirm(`Delete "${target.filename?.trim() || 'Untitled'}"? This cannot be undone.`)) return;
+
+    if (!authToken) {
+      if (!removeNoteLocally(id)) void addNote();
       return;
     }
 
-    const content = note.content ?? '';
     notesError = '';
-    updateNote(noteId, (entry) => ({ ...entry, saving: true }));
-
-    try {
-      const { repo, sha } = await writeNoteToGitHub(
-        authToken,
-        { path, content, sha: note.sha },
-        repoMeta
-      );
-      repoMeta = repo;
-      updateNote(noteId, (entry) => ({
-        ...entry,
-        saving: false,
-        savedContent: content,
-        dirty: entry.content !== content,
-        sha: sha ?? entry.sha,
-      }));
-    } catch (error) {
-      updateNote(noteId, (entry) => ({ ...entry, saving: false }));
-      notesError = error?.message ?? 'Failed to save note to GitHub.';
+    const result = await remote.deleteNote(target, authToken, repoMeta, updateNote);
+    if (result.success) {
+      repoMeta = result.result.repo;
+      if (!removeNoteLocally(id)) void addNote();
+    } else {
+      notesError = result.error;
     }
   };
 
-  const handleContentBlur = (noteId) => {
-    void saveNote(noteId);
+  const loadFromGitHub = async () => {
+    if (!authToken) return;
+    await remote.loadNotes(authToken, {
+      onStart: () => { notesLoading = true; notesError = ''; },
+      onSuccess: ({ repo, notes: loaded, truncated }) => {
+        repoMeta = repo;
+        notes = loaded;
+        if (truncated) notesError = 'Repository is large; some files may be missing.';
+        // Prune stale window states
+        const validIds = new Set(notes.map((n) => n.id));
+        const filtered = Object.fromEntries(Object.entries(windowStates).filter(([id]) => validIds.has(id)));
+        if (Object.keys(filtered).length !== Object.keys(windowStates).length) {
+          windowStates = filtered;
+          persistStates(windowStates);
+        }
+      },
+      onAuthError: () => { hasAuth = false; authToken = null; repoMeta = null; notes = []; },
+      onError: (msg) => { notesError = msg; notes = []; },
+      onFinally: () => { notesLoading = false; },
+    });
   };
 
   // Window operations
   const bringToFront = (noteId) => {
-    const existing = windowStates[noteId];
-    if (existing) {
-      windowStates = { ...windowStates, [noteId]: { ...existing, zIndex: topZ++ } };
+    if (windowStates[noteId]) {
+      windowStates = { ...windowStates, [noteId]: { ...windowStates[noteId], zIndex: topZ++ } };
     }
   };
 
@@ -211,77 +205,49 @@
     } else if (existing) {
       windowStates = { ...windowStates, [noteId]: { ...existing, visible: true, zIndex: topZ++ } };
     } else {
-      const visibleCount = Object.values(windowStates).filter(s => s.visible).length;
-      const pos = getNewWindowPosition(visibleCount);
-      windowStates = {
-        ...windowStates,
-        [noteId]: { x: pos.x, y: pos.y, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, zIndex: topZ++, visible: true }
-      };
+      windowStates = { ...windowStates, [noteId]: createWindowState(windowStates, topZ++) };
     }
     persistStates(windowStates);
     sidebarOpen = false;
   };
 
   const closeWindow = (noteId) => {
-    const existing = windowStates[noteId];
-    if (existing) {
-      windowStates = { ...windowStates, [noteId]: { ...existing, visible: false } };
+    if (windowStates[noteId]) {
+      windowStates = { ...windowStates, [noteId]: { ...windowStates[noteId], visible: false } };
       persistStates(windowStates);
     }
   };
 
-  // Drag handlers
+  // Drag & Resize
   const startDrag = (noteId, event) => {
     if (event.target.closest('input, textarea, button')) return;
     event.preventDefault();
     bringToFront(noteId);
     const state = windowStates[noteId];
-    if (!state) return;
-    dragState = { noteId, startX: event.clientX, startY: event.clientY, origX: state.x, origY: state.y };
+    if (state) dragState = { noteId, startX: event.clientX, startY: event.clientY, origX: state.x, origY: state.y };
   };
 
-  const onDrag = (event) => {
-    if (!dragState) return;
-    const dx = event.clientX - dragState.startX;
-    const dy = event.clientY - dragState.startY;
-    const newX = snapToGrid(Math.max(0, dragState.origX + dx));
-    const newY = snapToGrid(Math.max(0, dragState.origY + dy));
-    const existing = windowStates[dragState.noteId];
-    if (existing) {
-      windowStates = { ...windowStates, [dragState.noteId]: { ...existing, x: newX, y: newY } };
-    }
-  };
-
-  // Resize handlers
   const startResize = (noteId, event) => {
     event.preventDefault();
     event.stopPropagation();
     bringToFront(noteId);
     const state = windowStates[noteId];
-    if (!state) return;
-    resizeState = {
-      noteId,
-      startX: event.clientX,
-      startY: event.clientY,
-      origWidth: state.width ?? DEFAULT_WIDTH,
-      origHeight: state.height ?? DEFAULT_HEIGHT
-    };
+    if (state) resizeState = { noteId, startX: event.clientX, startY: event.clientY, origWidth: state.width ?? DEFAULT_WIDTH, origHeight: state.height ?? DEFAULT_HEIGHT };
   };
 
-  const onResize = (event) => {
-    if (!resizeState) return;
-    const minSize = 160;
-    const dx = event.clientX - resizeState.startX;
-    const dy = event.clientY - resizeState.startY;
-    const newWidth = snapToGrid(Math.max(minSize, resizeState.origWidth + dx));
-    const newHeight = snapToGrid(Math.max(minSize, resizeState.origHeight + dy));
-    const existing = windowStates[resizeState.noteId];
-    if (existing) {
-      windowStates = { ...windowStates, [resizeState.noteId]: { ...existing, width: newWidth, height: newHeight } };
+  const onPointerMove = (event) => {
+    if (dragState) {
+      const newX = snapToGrid(Math.max(0, dragState.origX + event.clientX - dragState.startX));
+      const newY = snapToGrid(Math.max(0, dragState.origY + event.clientY - dragState.startY));
+      windowStates = { ...windowStates, [dragState.noteId]: { ...windowStates[dragState.noteId], x: newX, y: newY } };
+    }
+    if (resizeState) {
+      const newWidth = snapToGrid(Math.max(160, resizeState.origWidth + event.clientX - resizeState.startX));
+      const newHeight = snapToGrid(Math.max(160, resizeState.origHeight + event.clientY - resizeState.startY));
+      windowStates = { ...windowStates, [resizeState.noteId]: { ...windowStates[resizeState.noteId], width: newWidth, height: newHeight } };
     }
   };
 
-  const onPointerMove = (event) => { onDrag(event); onResize(event); };
   const endDrag = () => {
     if (dragState || resizeState) {
       persistStates(windowStates);
@@ -290,153 +256,11 @@
     }
   };
 
-  // Note CRUD
-  const addNote = async () => {
-    notesError = '';
-    const dateBase = formatDateStamp();
-    const existingPaths = new Set(
-      notes
-        .map((note) => note.path ?? note.id)
-        .filter(Boolean)
-    );
-    const filename = getNextDateFilename(dateBase, existingPaths);
-    const fresh = normalizeNote(createNote(filename));
-    const noteId = fresh.id;
-    if (authToken) {
-      fresh.saving = true;
-    }
-    notes = [fresh, ...notes];
-    const visibleCount = Object.values(windowStates).filter(s => s.visible).length;
-    const pos = getNewWindowPosition(visibleCount);
-    windowStates = {
-      ...windowStates,
-      [fresh.id]: { x: pos.x, y: pos.y, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, zIndex: topZ++, visible: true }
-    };
-    persistStates(windowStates);
-    sidebarOpen = false;
-
-    if (!authToken) return;
-
-    try {
-      const { repo, sha } = await writeNoteToGitHub(
-        authToken,
-        { path: fresh.path, content: '' },
-        repoMeta
-      );
-      repoMeta = repo;
-      updateNote(noteId, (entry) => ({
-        ...entry,
-        saving: false,
-        savedContent: '',
-        dirty: entry.content !== '',
-        sha: sha ?? entry.sha,
-      }));
-    } catch (error) {
-      updateNote(noteId, (entry) => ({ ...entry, saving: false }));
-      notesError = error?.message ?? 'Failed to create note on GitHub.';
-    }
-  };
-
-  const removeNoteLocally = (id) => {
-    const target = notes.find((note) => note.id === id);
-    if (!target) return 0;
-    const { [id]: _, ...remainingStates } = windowStates;
-    windowStates = remainingStates;
-    persistStates(windowStates);
-    const { [id]: __, ...remainingContentEls } = contentEls;
-    contentEls = remainingContentEls;
-    const remaining = notes.filter((note) => note.id !== id);
-    notes = remaining;
-    return remaining.length;
-  };
-
-  const deleteNote = async (id) => {
-    const target = notes.find((note) => note.id === id);
-    if (!target) return;
-    const label = target.filename?.trim() || 'Untitled note';
-    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
-
-    if (!authToken) {
-      const remainingCount = removeNoteLocally(id);
-      if (!remainingCount) {
-        void addNote();
-      }
-      return;
-    }
-
-    const path = target.path ?? target.id;
-    if (!path || !target.sha) {
-      notesError = 'Missing file info for GitHub delete.';
-      return;
-    }
-
-    notesError = '';
-    updateNote(id, (entry) => ({ ...entry, saving: true }));
-
-    try {
-      const { repo } = await deleteNoteFromGitHub(
-        authToken,
-        path,
-        target.sha,
-        repoMeta,
-        { message: `Delete ${path}` }
-      );
-      repoMeta = repo;
-      const remainingCount = removeNoteLocally(id);
-      if (!remainingCount) {
-        void addNote();
-      }
-    } catch (error) {
-      updateNote(id, (entry) => ({ ...entry, saving: false }));
-      notesError = error?.message ?? 'Failed to delete note from GitHub.';
-    }
-  };
-
-  const pruneWindowStates = (loadedNotes) => {
-    const validIds = new Set(loadedNotes.map((note) => note.id));
-    const filtered = Object.fromEntries(
-      Object.entries(windowStates).filter(([noteId]) => validIds.has(noteId))
-    );
-    if (Object.keys(filtered).length !== Object.keys(windowStates).length) {
-      windowStates = filtered;
-      persistStates(windowStates);
-    }
-  };
-
-  const loadFromGitHub = async () => {
-    if (!authToken) return;
-    notesLoading = true;
-    notesError = '';
-    try {
-      const { repo, notes: loadedNotes, truncated } = await loadNotesFromGitHub(authToken);
-      repoMeta = repo;
-      notes = sortNotesByPath(loadedNotes).map(normalizeNote);
-      if (truncated) {
-        notesError = 'Repository is large; some files may be missing from the index.';
-      }
-      pruneWindowStates(notes);
-    } catch (error) {
-      if (error?.status === 401 || error?.status === 403) {
-        clearAuth();
-        hasAuth = false;
-        authToken = null;
-        repoMeta = null;
-        notes = [];
-        return;
-      }
-      notesError = error?.message ?? 'Failed to load notes from GitHub.';
-      notes = [];
-    } finally {
-      notesLoading = false;
-    }
-  };
-
   // Slash command
   const runSlashCommand = async (noteId) => {
     const contentEl = contentEls[noteId];
-    if (!contentEl || commandPending) return;
-    const note = notes.find(n => n.id === noteId);
-    if (!note) return;
+    const note = notes.find((n) => n.id === noteId);
+    if (!contentEl || !note || commandPending) return;
 
     commandPending = true;
     try {
@@ -447,8 +271,6 @@
         contentEl.setSelectionRange(result.newCaret, result.newCaret);
         contentEl.focus();
       }
-    } catch (error) {
-      console.warn('Slash command failed', error);
     } finally {
       commandPending = false;
     }
@@ -458,15 +280,13 @@
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
       void saveNote(noteId);
-      return;
-    }
-    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    } else if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
       runSlashCommand(noteId);
     }
   };
 
-  // Auth handler
+  // Auth
   const handleAuth = async (token) => {
     if (saveAuth(token)) {
       hasAuth = true;
@@ -477,7 +297,6 @@
     }
   };
 
-  // TODO: Remove skip handler before release
   const handleSkip = () => {
     hasAuth = true;
     authToken = null;
@@ -489,17 +308,13 @@
 
   // Init
   $effect(() => {
-    if (!browser) return;
-    if (!initialized) {
-      initialized = true;
-      authToken = loadAuthToken();
-      hasAuth = !!authToken;
-      windowStates = loadWindowStates();
-      topZ = getTopZ(windowStates);
-      if (hasAuth) {
-        void loadFromGitHub();
-      }
-    }
+    if (!browser || initialized) return;
+    initialized = true;
+    authToken = loadAuthToken();
+    hasAuth = !!authToken;
+    windowStates = loadWindowStates();
+    topZ = getTopZ(windowStates);
+    if (hasAuth) void loadFromGitHub();
   });
 </script>
 
@@ -550,7 +365,7 @@
             onTitleChange={(value) => { void renameNote(win.noteId, value); }}
             onContentChange={(value) => { updateNoteContent(win.noteId, value); }}
             onContentKeydown={(e) => handleContentKeydown(win.noteId, e)}
-            onContentBlur={() => handleContentBlur(win.noteId)}
+            onContentBlur={() => void saveNote(win.noteId)}
             bind:contentElRef={contentEls[win.noteId]}
           />
         {/if}

@@ -38,3 +38,16 @@ export const getOpenWindows = (windowStates) =>
   Object.entries(windowStates)
     .filter(([_, state]) => state.visible)
     .map(([noteId, state]) => ({ noteId, ...state }));
+
+export const createWindowState = (windowStates, zIndex) => {
+  const visibleCount = Object.values(windowStates).filter(s => s.visible).length;
+  const pos = getNewWindowPosition(visibleCount);
+  return {
+    x: pos.x,
+    y: pos.y,
+    width: DEFAULT_WIDTH,
+    height: DEFAULT_HEIGHT,
+    zIndex,
+    visible: true,
+  };
+};

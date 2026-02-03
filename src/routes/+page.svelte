@@ -367,17 +367,59 @@
     }
   };
 
-  const deleteNote = (id) => {
+  const removeNoteLocally = (id) => {
+    const target = notes.find((note) => note.id === id);
+    if (!target) return 0;
+    const { [id]: _, ...remainingStates } = windowStates;
+    windowStates = remainingStates;
+    persistStates(windowStates);
+    const { [id]: __, ...remainingContentEls } = contentEls;
+    contentEls = remainingContentEls;
+    const remaining = notes.filter((note) => note.id !== id);
+    notes = remaining;
+    return remaining.length;
+  };
+
+  const deleteNote = async (id) => {
     const target = notes.find((note) => note.id === id);
     if (!target) return;
     const label = target.filename?.trim() || 'Untitled note';
     if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
-    const { [id]: _, ...remainingStates } = windowStates;
-    windowStates = remainingStates;
-    persistStates(windowStates);
-    let remaining = notes.filter((note) => note.id !== id);
-    if (!remaining.length) remaining = [normalizeNote(createNote(`untitled-${Date.now()}.md`))];
-    notes = remaining;
+
+    if (!authToken) {
+      const remainingCount = removeNoteLocally(id);
+      if (!remainingCount) {
+        void addNote();
+      }
+      return;
+    }
+
+    const path = target.path ?? target.id;
+    if (!path || !target.sha) {
+      notesError = 'Missing file info for GitHub delete.';
+      return;
+    }
+
+    notesError = '';
+    updateNote(id, (entry) => ({ ...entry, saving: true }));
+
+    try {
+      const { repo } = await deleteNoteFromGitHub(
+        authToken,
+        path,
+        target.sha,
+        repoMeta,
+        { message: `Delete ${path}` }
+      );
+      repoMeta = repo;
+      const remainingCount = removeNoteLocally(id);
+      if (!remainingCount) {
+        void addNote();
+      }
+    } catch (error) {
+      updateNote(id, (entry) => ({ ...entry, saving: false }));
+      notesError = error?.message ?? 'Failed to delete note from GitHub.';
+    }
   };
 
   const pruneWindowStates = (loadedNotes) => {

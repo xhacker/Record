@@ -12,7 +12,7 @@ npm run dev
 ## Current State
 
 **Onboarding**: GitHub PAT input (MVP)
-**Storage**: GitHub read + single-note write-back (on blur/Cmd+S) + new note creation + rename, localStorage for auth + window states
+**Storage**: GitHub read + single-note write-back (on blur/Cmd+S) + new note creation + rename + delete, localStorage for auth + window states
 - `the-record-auth` — GitHub PAT (MVP)
 - `the-record-states` — window positions, sizes, visibility
 
@@ -82,6 +82,7 @@ notes/
 GET  /repos/{owner}/{repo}/git/trees/{branch}?recursive=1  # full tree
 GET  /repos/{owner}/{repo}/contents/{path}                  # read file
 PUT  /repos/{owner}/{repo}/contents/{path}                  # write file
+DELETE /repos/{owner}/{repo}/contents/{path}                # delete file
 ```
 
 ---
@@ -108,7 +109,7 @@ PUT  /repos/{owner}/{repo}/contents/{path}                  # write file
 ## Implementation Plan
 
 1. Onboarding page with GitHub OAuth (PAT input for MVP) — done
-2. GitHub API service — in progress (read + single-note write-back + new note creation + rename)
+2. GitHub API service — done (read + write + create + rename + delete)
 3. Agent tools that call GitHub API directly
 
 ### After MVP

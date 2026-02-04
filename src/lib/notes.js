@@ -17,6 +17,8 @@ export const formatDateStamp = (value = new Date()) => {
 
 const FRONTMATTER_REGEX = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
 const USER_BUBBLE_REGEX = /<div\s+class=["']bubble user["']\s*>([\s\S]*?)<\/div>/i;
+const TOOL_CODE_BLOCK_LEADING_REGEX =
+  /^```tool(?::([^\n`]+))?\n([\s\S]*?)\n```\s*/i;
 
 const escapeHtml = (value = '') =>
   value
@@ -36,6 +38,43 @@ const unescapeHtml = (value = '') =>
 
 const stripHtmlTags = (value = '') =>
   value.replace(/<[^>]*>/g, '');
+
+const sanitizeBubbleText = (rawContent = '') =>
+  unescapeHtml(stripHtmlTags(rawContent));
+
+const escapeCodeFence = (value = '') =>
+  value.replace(/```/g, '``\\`');
+
+export const formatToolResult = (value) => {
+  const trimmed = (value ?? '').toString().trim();
+  if (!trimmed) return '';
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return trimmed;
+  }
+};
+
+const parseToolResults = (value = '') => {
+  let remainder = value.trimStart();
+  const toolResults = [];
+
+  while (true) {
+    const codeMatch = remainder.match(TOOL_CODE_BLOCK_LEADING_REGEX);
+    if (codeMatch) {
+      toolResults.push({
+        tool: (codeMatch[1] ?? 'tool').trim(),
+        content: (codeMatch[2] ?? '').trim(),
+      });
+      remainder = remainder.slice(codeMatch[0].length).trimStart();
+      continue;
+    }
+
+    break;
+  }
+
+  return { toolResults, remainder };
+};
 
 /**
  * Parse YAML-like frontmatter from content
@@ -89,17 +128,19 @@ export const parseTranscriptContent = (content = '') => {
     return {
       threadId: data.thread_id || '',
       userText: '',
+      toolResults: [],
       assistantText: body.trim(),
     };
   }
   const assistantStart = (match.index ?? 0) + match[0].length;
-  // Sanitize: strip any injected HTML tags, then unescape legitimate entities
-  const rawContent = match[1] ?? '';
-  const sanitized = unescapeHtml(stripHtmlTags(rawContent));
+  const sanitized = sanitizeBubbleText(match[1] ?? '');
+  const { toolResults, remainder } = parseToolResults(body.slice(assistantStart));
+
   return {
     threadId: data.thread_id || '',
     userText: sanitized,
-    assistantText: body.slice(assistantStart).trimStart(),
+    toolResults,
+    assistantText: remainder,
   };
 };
 
@@ -134,9 +175,18 @@ export const getUniquePath = (path, existingPaths) => {
   return `${base}-${Date.now()}${ext}`;
 };
 
-export const buildTranscriptContent = ({ threadId, userPrompt, assistantContent }) => {
+export const buildTranscriptContent = ({ threadId, userPrompt, assistantContent, toolResults = [] }) => {
   const safePrompt = escapeHtml((userPrompt ?? '').trim());
   const assistant = (assistantContent ?? '').trim();
+  const toolBlocks = (toolResults ?? [])
+    .filter((entry) => entry && entry.content)
+    .map(({ tool = 'tool', content = '' }) => {
+      const safeTool = String(tool).trim() || 'tool';
+      const formatted = formatToolResult(content);
+      const safeContent = escapeCodeFence(formatted);
+      return `\`\`\`tool:${safeTool}\n${safeContent}\n\`\`\``;
+    });
+
   return [
     '---',
     'type: transcript',
@@ -145,6 +195,7 @@ export const buildTranscriptContent = ({ threadId, userPrompt, assistantContent 
     '',
     `<div class="bubble user">${safePrompt}</div>`,
     '',
+    ...(toolBlocks.length ? [...toolBlocks, ''] : []),
     assistant,
   ].join('\n');
 };

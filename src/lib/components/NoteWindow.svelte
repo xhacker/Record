@@ -1,6 +1,6 @@
 <script>
   import { DEFAULT_WIDTH, DEFAULT_HEIGHT } from '$lib/windowManager.js';
-  import { getDisplayName, parseTranscriptContent } from '$lib/notes.js';
+  import { formatToolResult, getDisplayName, parseTranscriptContent } from '$lib/notes.js';
 
   let {
     note,
@@ -58,7 +58,10 @@
     node.focus();
     node.select();
   }
-</script>
+
+  let toolDetailsOpen = $state(false);
+
+  </script>
 
 <section
   class:transcript={isTranscript}
@@ -113,6 +116,42 @@
     <div class="note-content transcript-body" aria-live="polite">
       {#if transcript?.userText}
         <div class="bubble user">{transcript.userText}</div>
+      {/if}
+      {#if transcript?.toolResults?.length}
+        {@const toolSummary = transcript.toolResults
+          .map((result) => result?.tool)
+          .filter(Boolean)
+          .join(', ')}
+        <div class="bubble tool">
+          <button
+            class="tool-toggle"
+            type="button"
+            aria-expanded={toolDetailsOpen}
+            onclick={() => { toolDetailsOpen = !toolDetailsOpen; }}
+          >
+            <span>Calling tools{toolSummary ? `: ${toolSummary}` : ''}</span>
+            <svg class="tool-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path
+                d="M6 3.5l4 4-4 4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          {#if toolDetailsOpen}
+            <div class="tool-details">
+              {#each transcript.toolResults as result, idx (`${result.tool}:${idx}`)}
+                <div class="tool-entry">
+                  <div class="tool-label">{result.tool}</div>
+                  <pre class="tool-content">{formatToolResult(result.content)}</pre>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/if}
       {#if transcript?.assistantText}
         <div class="assistant-text">{transcript.assistantText}</div>
@@ -301,18 +340,96 @@
     user-select: text;
   }
 
-  .transcript-body .bubble.user {
-    align-self: flex-end;
+  .transcript-body .bubble {
     max-width: min(520px, 90%);
     padding: 10px 14px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    box-shadow: 0 12px 20px rgba(16, 22, 22, 0.1);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .transcript-body .bubble.user {
+    align-self: flex-end;
     border-radius: 16px 16px 4px 16px;
     background: linear-gradient(140deg, rgba(234, 129, 70, 0.2), rgba(214, 90, 24, 0.2));
     border: 1px solid rgba(214, 90, 24, 0.2);
     color: rgba(82, 39, 19, 0.95);
-    font-size: 0.95rem;
-    line-height: 1.5;
     box-shadow: 0 12px 20px rgba(214, 90, 24, 0.12);
+  }
+
+  .transcript-body .bubble.tool {
+    align-self: flex-start;
+    padding: 0;
+    border-radius: 16px 16px 16px 4px;
+    background: linear-gradient(140deg, rgba(10, 115, 104, 0.16), rgba(10, 115, 104, 0.08));
+    border: 1px solid rgba(10, 115, 104, 0.22);
+    color: rgba(6, 68, 62, 0.95);
+    box-shadow: 0 12px 20px rgba(10, 115, 104, 0.1);
+    overflow: hidden;
+  }
+
+  .transcript-body .tool-toggle {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+    padding: 10px 14px;
+  }
+
+  .transcript-body .tool-toggle:focus-visible {
+    outline: 2px solid rgba(10, 115, 104, 0.35);
+    outline-offset: -2px;
+  }
+
+  .transcript-body .tool-chevron {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .transcript-body .tool-toggle[aria-expanded="true"] .tool-chevron {
+    transform: rotate(90deg);
+  }
+
+  .transcript-body .tool-details {
+    border-top: 1px solid rgba(10, 115, 104, 0.18);
+    padding: 10px 14px 12px;
+    display: grid;
+    gap: 12px;
+  }
+
+  .transcript-body .tool-entry {
+    display: grid;
+    gap: 6px;
+  }
+
+  .transcript-body .tool-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(6, 68, 62, 0.7);
+    margin-bottom: 8px;
+  }
+
+  .transcript-body .tool-content {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.84rem;
+    line-height: 1.45;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .assistant-text {

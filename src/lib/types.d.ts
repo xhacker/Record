@@ -61,6 +61,8 @@ export interface TranscriptContent {
   threadId: string;
   /** User's message (plain text, sanitized) */
   userText: string;
+  /** Tool results captured from transcript tool code blocks */
+  toolResults?: Array<{ tool: string; content: string }>;
   /** Assistant's response (plain text) */
   assistantText: string;
 }

@@ -177,7 +177,7 @@
     await insertAndSyncNote(normalizeNote(createNote(filename)));
   };
 
-  const addTranscript = async ({ prompt, response }) => {
+  const addTranscript = async ({ prompt, response, toolResults = [] }) => {
     const baseStamp = formatTranscriptTimestamp(new Date());
     const path = getUniquePath(`transcripts/${baseStamp}.md`, getExistingPaths());
     const threadId = (path.split('/').pop() || baseStamp).replace(/\.md$/i, '');
@@ -185,6 +185,7 @@
       threadId,
       userPrompt: prompt,
       assistantContent: response,
+      toolResults,
     });
     await insertAndSyncNote(normalizeNote(createNote(path, content, 'transcript')));
   };
@@ -214,6 +215,7 @@
     const MAX_TOOL_ROUNDS = 5;
     let messages = null; // null = use prompt, array = use messages
     let rounds = 0;
+    const toolResults = [];
 
     try {
       while (rounds < MAX_TOOL_ROUNDS) {
@@ -267,6 +269,7 @@
               refreshNotes: () => void loadFromGitHub(),
             };
             const result = await executeTool(toolCall.function.name, args, toolContext);
+            toolResults.push({ tool: toolCall.function.name, content: result });
 
             messages.push({
               role: 'tool',
@@ -285,7 +288,7 @@
           throw new Error('AI response was empty.');
         }
 
-        await addTranscript({ prompt, response: assistantContent });
+        await addTranscript({ prompt, response: assistantContent, toolResults });
         askOpen = false;
         askPrompt = '';
         return;

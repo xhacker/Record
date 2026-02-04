@@ -20,7 +20,7 @@ npm run dev
 
 **Sidebar**: Note pills wrap long filenames (no horizontal scrolling)
 
-**AI**: Ask panel with agent tools (multi-round tool calling)
+**AI**: Ask panel with agent tools (multi-round tool calling; tool results stored as `tool:` code blocks and shown as a collapsible green bubble)
 
 **Stack**: SvelteKit, Svelte 5
 

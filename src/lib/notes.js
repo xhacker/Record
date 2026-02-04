@@ -16,7 +16,7 @@ export const formatDateStamp = (value = new Date()) => {
 };
 
 const FRONTMATTER_REGEX = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
-const USER_BUBBLE_REGEX = /<div\s+class=["']bubble user["']\s*>([\s\S]*?)<\/div>/i;
+const USER_BUBBLE_GLOBAL_REGEX = /<div\s+class=["']bubble user["']\s*>([\s\S]*?)<\/div>/gi;
 const TOOL_CODE_BLOCK_LEADING_REGEX =
   /^```tool(?::([^\n`]+))?\n([\s\S]*?)\n```\s*/i;
 
@@ -76,6 +76,29 @@ const parseToolResults = (value = '') => {
   return { toolResults, remainder };
 };
 
+const buildToolBlocks = (toolResults = []) =>
+  (toolResults ?? [])
+    .filter((entry) => entry && entry.content)
+    .map(({ tool = 'tool', content = '' }) => {
+      const safeTool = String(tool).trim() || 'tool';
+      const formatted = formatToolResult(content);
+      const safeContent = escapeCodeFence(formatted);
+      return `\`\`\`tool:${safeTool}\n${safeContent}\n\`\`\``;
+    });
+
+export const buildTranscriptTurn = ({ userPrompt, assistantContent, toolResults = [] }) => {
+  const safePrompt = escapeHtml((userPrompt ?? '').trim());
+  const assistant = (assistantContent ?? '').trim();
+  const toolBlocks = buildToolBlocks(toolResults);
+
+  return [
+    `<div class="bubble user">${safePrompt}</div>`,
+    '',
+    ...(toolBlocks.length ? [...toolBlocks, ''] : []),
+    assistant,
+  ].join('\n').trimEnd();
+};
+
 /**
  * Parse YAML-like frontmatter from content
  * @param {string} [content]
@@ -123,24 +146,29 @@ export const stripFrontmatter = (content = '') => parseFrontmatter(content).body
  */
 export const parseTranscriptContent = (content = '') => {
   const { data, body } = parseFrontmatter(content);
-  const match = body.match(USER_BUBBLE_REGEX);
-  if (!match) {
+  const matches = [...body.matchAll(USER_BUBBLE_GLOBAL_REGEX)];
+  if (matches.length === 0) {
     return {
       threadId: data.thread_id || '',
-      userText: '',
-      toolResults: [],
       assistantText: body.trim(),
+      turns: [],
     };
   }
-  const assistantStart = (match.index ?? 0) + match[0].length;
-  const sanitized = sanitizeBubbleText(match[1] ?? '');
-  const { toolResults, remainder } = parseToolResults(body.slice(assistantStart));
+  const turns = matches.map((match, index) => {
+    const segmentStart = (match.index ?? 0) + match[0].length;
+    const segmentEnd = matches[index + 1]?.index ?? body.length;
+    const segment = body.slice(segmentStart, segmentEnd);
+    const { toolResults, remainder } = parseToolResults(segment);
+    return {
+      userText: sanitizeBubbleText(match[1] ?? ''),
+      toolResults,
+      assistantText: remainder.trimStart(),
+    };
+  });
 
   return {
     threadId: data.thread_id || '',
-    userText: sanitized,
-    toolResults,
-    assistantText: remainder,
+    turns,
   };
 };
 
@@ -176,28 +204,22 @@ export const getUniquePath = (path, existingPaths) => {
 };
 
 export const buildTranscriptContent = ({ threadId, userPrompt, assistantContent, toolResults = [] }) => {
-  const safePrompt = escapeHtml((userPrompt ?? '').trim());
-  const assistant = (assistantContent ?? '').trim();
-  const toolBlocks = (toolResults ?? [])
-    .filter((entry) => entry && entry.content)
-    .map(({ tool = 'tool', content = '' }) => {
-      const safeTool = String(tool).trim() || 'tool';
-      const formatted = formatToolResult(content);
-      const safeContent = escapeCodeFence(formatted);
-      return `\`\`\`tool:${safeTool}\n${safeContent}\n\`\`\``;
-    });
-
+  const turn = buildTranscriptTurn({ userPrompt, assistantContent, toolResults });
   return [
     '---',
     'type: transcript',
     `thread_id: ${threadId}`,
     '---',
     '',
-    `<div class="bubble user">${safePrompt}</div>`,
-    '',
-    ...(toolBlocks.length ? [...toolBlocks, ''] : []),
-    assistant,
+    turn,
   ].join('\n');
+};
+
+export const appendTranscriptContent = (content = '', { userPrompt, assistantContent, toolResults = [] }) => {
+  const base = (content ?? '').trimEnd();
+  const turn = buildTranscriptTurn({ userPrompt, assistantContent, toolResults });
+  if (!base) return turn;
+  return `${base}\n\n${turn}`;
 };
 
 export const getNextDateFilename = (base, existingPaths) => {

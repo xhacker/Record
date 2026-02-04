@@ -10,6 +10,7 @@
     normalizeNote,
     formatTranscriptTimestamp,
     buildTranscriptContent,
+    appendTranscriptContent,
     getUniquePath,
   } from '$lib/notes.js';
   import * as remote from '$lib/remote.js';
@@ -48,6 +49,8 @@
   let askPending = $state(false);
   let askError = $state('');
   let followupDrafts = $state({});
+  let followupPending = $state({});
+  let followupErrors = $state({});
 
   // Dictation state
   let dictationRecording = $state(false);
@@ -57,7 +60,7 @@
 
   const ASK_LABEL = 'Ask AI';
   const ASK_PLACEHOLDER = 'Ask a question...';
-  const FOLLOWUP_ENABLED = false;
+  const FOLLOWUP_ENABLED = true;
 
   let contentEls = $state({});
   let dragState = null;
@@ -82,6 +85,23 @@
 
   const updateFollowupDraft = (noteId, value) => {
     followupDrafts = { ...followupDrafts, [noteId]: value };
+    if (followupErrors[noteId]) {
+      const { [noteId]: _, ...rest } = followupErrors;
+      followupErrors = rest;
+    }
+  };
+
+  const setFollowupPending = (noteId, value) => {
+    followupPending = { ...followupPending, [noteId]: value };
+  };
+
+  const setFollowupError = (noteId, message) => {
+    if (!message) {
+      const { [noteId]: _, ...rest } = followupErrors;
+      followupErrors = rest;
+      return;
+    }
+    followupErrors = { ...followupErrors, [noteId]: message };
   };
 
   const getExistingPaths = () =>
@@ -201,6 +221,99 @@
     askError = '';
   };
 
+  const createToolContext = () => ({
+    token: authToken,
+    notes,
+    windowStates,
+    openWindow: openWindowForAgent,
+    closeWindow,
+    moveWindow: moveWindowForAgent,
+    resizeWindow: resizeWindowForAgent,
+    refreshNotes: () => void loadFromGitHub(),
+  });
+
+  const runAskLoop = async ({ prompt }) => {
+    const MAX_TOOL_ROUNDS = 5;
+    let messages = null; // null = use prompt, array = use messages
+    let rounds = 0;
+    const toolResults = [];
+
+    while (rounds < MAX_TOOL_ROUNDS) {
+      rounds++;
+
+      const requestBody = {
+        model: AI_CONFIG.askModel,
+        temperature: AI_CONFIG.askTemperature,
+        max_completion_tokens: AI_CONFIG.askMaxTokens,
+        top_p: 1,
+        useTools: AI_CONFIG.useTools && !!authToken,
+        ...(messages ? { messages } : { prompt }),
+      };
+
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? 'Failed to ask AI.');
+      }
+
+      if (payload.tool_calls && payload.tool_calls.length > 0) {
+        if (!messages) {
+          messages = [{ role: 'user', content: prompt }];
+        }
+
+        messages.push({
+          role: 'assistant',
+          content: payload.assistant_content || '',
+          tool_calls: payload.tool_calls,
+        });
+
+        for (const toolCall of payload.tool_calls) {
+          const args = JSON.parse(toolCall.function.arguments || '{}');
+          const result = await executeTool(toolCall.function.name, args, createToolContext());
+          toolResults.push({ tool: toolCall.function.name, content: result });
+
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: result,
+          });
+        }
+
+        continue;
+      }
+
+      const assistantContent = (payload?.content ?? '').trim();
+      if (!assistantContent) {
+        throw new Error('AI response was empty.');
+      }
+
+      return { assistantContent, toolResults };
+    }
+
+    throw new Error('Too many tool calling rounds.');
+  };
+
+  const buildFollowupPrompt = (transcriptContent, userPrompt) => [
+    'You are continuing a conversation.',
+    'Transcript format:',
+    '- Each turn starts with <div class="bubble user">USER</div>.',
+    '- Tool results (if any) appear as ```tool:tool_name``` code blocks immediately after the user bubble.',
+    '- Assistant responses are the plain text following those tool blocks until the next user bubble.',
+    '',
+    'Full transcript markdown:',
+    '---BEGIN TRANSCRIPT---',
+    (transcriptContent ?? '').trim(),
+    '---END TRANSCRIPT---',
+    '',
+    `New user prompt: ${userPrompt.trim()}`,
+    'Respond to the new prompt.',
+  ].join('\n');
+
   const submitAsk = async () => {
     if (askPending) return;
     const prompt = askPrompt.trim();
@@ -212,93 +325,59 @@
     askPending = true;
     askError = '';
 
-    const MAX_TOOL_ROUNDS = 5;
-    let messages = null; // null = use prompt, array = use messages
-    let rounds = 0;
-    const toolResults = [];
-
     try {
-      while (rounds < MAX_TOOL_ROUNDS) {
-        rounds++;
-
-        const requestBody = {
-          model: AI_CONFIG.askModel,
-          temperature: AI_CONFIG.askTemperature,
-          max_completion_tokens: AI_CONFIG.askMaxTokens,
-          top_p: 1,
-          useTools: AI_CONFIG.useTools && !!authToken,
-          ...(messages ? { messages } : { prompt }),
-        };
-
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(requestBody),
-        });
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error ?? 'Failed to ask AI.');
-        }
-
-        // If there are tool calls, execute them on the client
-        if (payload.tool_calls && payload.tool_calls.length > 0) {
-          // Initialize messages array if first tool round
-          if (!messages) {
-            messages = [{ role: 'user', content: prompt }];
-          }
-
-          // Add assistant message with tool calls
-          messages.push({
-            role: 'assistant',
-            content: payload.assistant_content || '',
-            tool_calls: payload.tool_calls,
-          });
-
-          // Execute each tool and add results
-          for (const toolCall of payload.tool_calls) {
-            const args = JSON.parse(toolCall.function.arguments || '{}');
-            const toolContext = {
-              token: authToken,
-              notes,
-              windowStates,
-              openWindow: openWindowForAgent,
-              closeWindow,
-              moveWindow: moveWindowForAgent,
-              resizeWindow: resizeWindowForAgent,
-              refreshNotes: () => void loadFromGitHub(),
-            };
-            const result = await executeTool(toolCall.function.name, args, toolContext);
-            toolResults.push({ tool: toolCall.function.name, content: result });
-
-            messages.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: result,
-            });
-          }
-
-          // Continue the loop
-          continue;
-        }
-
-        // No tool calls, we have the final response
-        const assistantContent = (payload?.content ?? '').trim();
-        if (!assistantContent) {
-          throw new Error('AI response was empty.');
-        }
-
-        await addTranscript({ prompt, response: assistantContent, toolResults });
-        askOpen = false;
-        askPrompt = '';
-        return;
-      }
-
-      throw new Error('Too many tool calling rounds.');
+      const { assistantContent, toolResults } = await runAskLoop({ prompt });
+      await addTranscript({ prompt, response: assistantContent, toolResults });
+      askOpen = false;
+      askPrompt = '';
+      return;
     } catch (error) {
       askError = error?.message ?? 'Failed to ask AI.';
     } finally {
       askPending = false;
+    }
+  };
+
+  const submitFollowup = async (noteId) => {
+    if (followupPending[noteId]) return;
+    const note = notes.find((n) => n.id === noteId);
+    if (!note || note.type !== 'transcript') return;
+
+    const prompt = (followupDrafts[noteId] ?? '').trim();
+    if (!prompt) {
+      setFollowupError(noteId, 'Write a follow-up first.');
+      return;
+    }
+
+    setFollowupPending(noteId, true);
+    setFollowupError(noteId, '');
+
+    try {
+      const followupPrompt = buildFollowupPrompt(note.content ?? '', prompt);
+      const { assistantContent, toolResults } = await runAskLoop({ prompt: followupPrompt });
+      const nextContent = appendTranscriptContent(note.content ?? '', {
+        userPrompt: prompt,
+        assistantContent,
+        toolResults,
+      });
+
+      updateNote(noteId, (n) => {
+        const dirty = nextContent !== (n.savedContent ?? '');
+        return { ...n, content: nextContent, dirty };
+      });
+      await saveNote(noteId);
+      updateFollowupDraft(noteId, '');
+    } catch (error) {
+      setFollowupError(noteId, error?.message ?? 'Failed to ask AI.');
+    } finally {
+      setFollowupPending(noteId, false);
+    }
+  };
+
+  const handleFollowupKeydown = (noteId, event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void submitFollowup(noteId);
     }
   };
 
@@ -402,6 +481,10 @@
     contentEls = restEls;
     const { [id]: ___, ...restFollowups } = followupDrafts;
     followupDrafts = restFollowups;
+    const { [id]: ____, ...restFollowupPending } = followupPending;
+    followupPending = restFollowupPending;
+    const { [id]: _____, ...restFollowupErrors } = followupErrors;
+    followupErrors = restFollowupErrors;
     notes = notes.filter((n) => n.id !== id);
     return notes.length;
   };
@@ -708,7 +791,11 @@
             {commandPending}
             followupValue={followupDrafts[win.noteId] ?? ''}
             followupEnabled={FOLLOWUP_ENABLED}
+            followupPending={followupPending[win.noteId] ?? false}
+            followupError={followupErrors[win.noteId] ?? ''}
             onFollowupChange={(value) => updateFollowupDraft(win.noteId, value)}
+            onFollowupSubmit={() => submitFollowup(win.noteId)}
+            onFollowupKeydown={(event) => handleFollowupKeydown(win.noteId, event)}
             onClose={() => closeWindow(win.noteId)}
             onFocus={() => bringToFront(win.noteId)}
             onDragStart={(e) => startDrag(win.noteId, e)}

@@ -22,6 +22,8 @@ npm run dev
 
 **AI**: Ask panel with agent tools (multi-round tool calling; tool results stored as `tool:` code blocks and shown as a collapsible green bubble)
 
+**Follow-ups**: Enabled in transcript windows (full transcript sent as context)
+
 **Stack**: SvelteKit, Svelte 5
 
 ---

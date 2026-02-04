@@ -16,6 +16,8 @@
     onContentBlur,
     followupValue = '',
     followupEnabled = false,
+    followupPending = false,
+    followupError = '',
     onFollowupChange,
     onFollowupSubmit,
     onFollowupKeydown,
@@ -59,7 +61,11 @@
     node.select();
   }
 
-  let toolDetailsOpen = $state(false);
+  let toolDetailsOpen = $state({});
+
+  const toggleToolDetails = (index) => {
+    toolDetailsOpen = { ...toolDetailsOpen, [index]: !toolDetailsOpen[index] };
+  };
 
   </script>
 
@@ -114,46 +120,53 @@
   </div>
   {#if isTranscript}
     <div class="note-content transcript-body" aria-live="polite">
-      {#if transcript?.userText}
-        <div class="bubble user">{transcript.userText}</div>
-      {/if}
-      {#if transcript?.toolResults?.length}
-        {@const toolSummary = transcript.toolResults
-          .map((result) => result?.tool)
-          .filter(Boolean)
-          .join(', ')}
-        <div class="bubble tool">
-          <button
-            class="tool-toggle"
-            type="button"
-            aria-expanded={toolDetailsOpen}
-            onclick={() => { toolDetailsOpen = !toolDetailsOpen; }}
-          >
-            <span>Calling tools{toolSummary ? `: ${toolSummary}` : ''}</span>
-            <svg class="tool-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path
-                d="M6 3.5l4 4-4 4"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.6"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-          {#if toolDetailsOpen}
-            <div class="tool-details">
-              {#each transcript.toolResults as result, idx (`${result.tool}:${idx}`)}
-                <div class="tool-entry">
-                  <div class="tool-label">{result.tool}</div>
-                  <pre class="tool-content">{formatToolResult(result.content)}</pre>
+      {#if transcript?.turns?.length}
+        {#each transcript.turns as turn, turnIndex}
+          {#if turn.userText}
+            <div class="bubble user">{turn.userText}</div>
+          {/if}
+          {#if turn.toolResults?.length}
+            {@const toolSummary = turn.toolResults
+              .map((result) => result?.tool)
+              .filter(Boolean)
+              .join(', ')}
+            {@const isOpen = !!toolDetailsOpen[turnIndex]}
+            <div class="bubble tool">
+              <button
+                class="tool-toggle"
+                type="button"
+                aria-expanded={isOpen}
+                onclick={() => toggleToolDetails(turnIndex)}
+              >
+                <span>Calling tools{toolSummary ? `: ${toolSummary}` : ''}</span>
+                <svg class="tool-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                  <path
+                    d="M6 3.5l4 4-4 4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              {#if isOpen}
+                <div class="tool-details">
+                  {#each turn.toolResults as result, idx (`${turnIndex}:${idx}`)}
+                    <div class="tool-entry">
+                      <div class="tool-label">{result.tool}</div>
+                      <pre class="tool-content">{formatToolResult(result.content)}</pre>
+                    </div>
+                  {/each}
                 </div>
-              {/each}
+              {/if}
             </div>
           {/if}
-        </div>
-      {/if}
-      {#if transcript?.assistantText}
+          {#if turn.assistantText}
+            <div class="assistant-text">{turn.assistantText}</div>
+          {/if}
+        {/each}
+      {:else if transcript?.assistantText}
         <div class="assistant-text">{transcript.assistantText}</div>
       {/if}
     </div>
@@ -162,15 +175,18 @@
         class="followup-input"
         type="text"
         value={followupValue}
-        placeholder={followupEnabled ? 'Ask a follow-up...' : 'Follow-ups coming soon...'}
-        disabled={!followupEnabled}
+        placeholder={followupEnabled ? (followupPending ? 'Thinking...' : 'Ask a follow-up...') : 'Follow-ups coming soon...'}
+        disabled={!followupEnabled || followupPending}
         oninput={(e) => onFollowupChange?.(e.target.value)}
         onkeydown={onFollowupKeydown}
       />
-      <button class="followup-send" type="button" onclick={onFollowupSubmit} disabled={!followupEnabled}>
-        Ask
+      <button class="followup-send" type="button" onclick={onFollowupSubmit} disabled={!followupEnabled || followupPending}>
+        {followupPending ? 'Thinking...' : 'Ask'}
       </button>
     </div>
+    {#if followupError}
+      <p class="followup-error" role="alert">{followupError}</p>
+    {/if}
   {:else}
     <textarea
       class="note-content"
@@ -482,6 +498,12 @@
   .followup-send:disabled {
     background: rgba(214, 90, 24, 0.35);
     cursor: not-allowed;
+  }
+
+  .followup-error {
+    margin: -6px 16px 12px;
+    font-size: 0.82rem;
+    color: rgba(122, 48, 16, 0.85);
   }
 
   .note-resize-handle {

@@ -311,10 +311,12 @@
 
   .editor-root {
     height: 100%;
+    min-height: 0;
   }
 
   .editor-root :global(.milkdown) {
     height: 100%;
+    min-height: 0;
     background: transparent;
   }
 
@@ -330,6 +332,8 @@
     font-size: 1rem;
     padding: clamp(20px, 4vw, 32px);
     font-family: var(--font-ui);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .editor-root :global(.milkdown .editor:focus) {

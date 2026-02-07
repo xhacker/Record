@@ -1,11 +1,11 @@
 <script>
   import { DEFAULT_WIDTH, DEFAULT_HEIGHT } from '$lib/windowManager.js';
   import { formatToolResult, getDisplayName, parseTranscriptContent } from '$lib/notes.js';
+  import MilkdownEditor from '$lib/components/MilkdownEditor.svelte';
 
   let {
     note,
     windowState,
-    commandPending = false,
     onClose,
     onFocus,
     onDragStart,
@@ -21,7 +21,6 @@
     onFollowupChange,
     onFollowupSubmit,
     onFollowupKeydown,
-    contentElRef = $bindable(),
   } = $props();
 
   let editingTitle = $state(false);
@@ -79,6 +78,7 @@
   <div
     class="note-titlebar"
     role="toolbar"
+    tabindex="-1"
     onpointerdown={onDragStart}
     ondblclick={() => { editingTitle = true; draftTitle = displayName.base; }}
   >
@@ -188,16 +188,13 @@
       <p class="followup-error" role="alert">{followupError}</p>
     {/if}
   {:else}
-    <textarea
-      class="note-content"
-      placeholder="Write your note..."
+    <MilkdownEditor
       value={note.content}
-      bind:this={contentElRef}
-      oninput={(e) => onContentChange(e.target.value)}
-      onkeydown={onContentKeydown}
-      onblur={onContentBlur}
-      aria-busy={commandPending}
-    ></textarea>
+      placeholder="Write your note..."
+      onChange={onContentChange}
+      onKeydown={onContentKeydown}
+      onBlur={onContentBlur}
+    />
   {/if}
   <div
     class="note-resize-handle"

@@ -1,16 +1,17 @@
-<aside class="slash-instructions" aria-label="Slash command instructions">
-  <p class="slash-instructions-title">Shortcuts</p>
-  <p class="slash-instructions-body">
-    Type <span class="inline-chip">/</span> with a prompt, press
-    <span class="inline-chip">⌘</span> + <span class="inline-chip">↵</span> to insert inline
+<aside class="shortcuts-instructions" aria-label="Editing shortcuts">
+  <p class="shortcuts-instructions-title">Shortcuts</p>
+  <p class="shortcuts-instructions-body">
+    Rich text: <span class="inline-chip">⌘</span> + <span class="inline-chip">B</span> for bold,
+    <span class="inline-chip">⌘</span> + <span class="inline-chip">I</span> for italics
   </p>
-  <p class="slash-instructions-body">
-    Double-click title bar to rename
+  <p class="shortcuts-instructions-body">
+    <span class="inline-chip">⌘</span> + <span class="inline-chip">S</span> to save,
+    double-click title bar to rename
   </p>
 </aside>
 
 <style>
-  .slash-instructions {
+  .shortcuts-instructions {
     position: fixed;
     bottom: 28px;
     left: 28px;
@@ -22,7 +23,7 @@
     z-index: 0;
   }
 
-  .slash-instructions-title {
+  .shortcuts-instructions-title {
     color: var(--muted);
     font-weight: 600;
     font-size: 0.68rem;
@@ -30,7 +31,7 @@
     text-transform: uppercase;
   }
 
-  .slash-instructions-body {
+  .shortcuts-instructions-body {
     line-height: 1.5;
   }
 

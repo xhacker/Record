@@ -16,6 +16,8 @@ npm run dev
 - `the-record-auth` — GitHub PAT (MVP)
 - `the-record-states` — window positions, sizes, visibility
 
+**Editor**: Milkdown rich-text editing for regular notes with Markdown as canonical document state
+
 **Grid**: 40px snap for all window positions and sizes
 
 **Sidebar**: Note pills wrap long filenames (no horizontal scrolling)
@@ -30,19 +32,21 @@ npm run dev
 
 ## Architecture
 
+### Current (Implemented)
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Browser                                                                │
 │                                                                         │
 │  ┌──────────────┐     ┌──────────────┐     ┌──────────────────────────┐ │
 │  │  Notes UI    │────▶│              │◀────│  Agent Loop              │ │
-│  │              │◀────│  IndexedDB   │────▶│                          │ │
-│  │  - Canvas    │     │  (cache)     │     │  Tools:                  │ │
-│  │  - Windows   │     │              │     │  - list_files            │ │
+│  │              │◀────│  Svelte      │────▶│                          │ │
+│  │  - Canvas    │     │  state       │     │  Tools:                  │ │
+│  │  - Windows   │     │  (in-memory) │     │  - list_files            │ │
 │  │  - Sidebar   │     └──────┬───────┘     │  - read_file             │ │
-│  └──────────────┘            │             │  - write_file            │ │
-│                              │ write-      │  - search_notes          │ │
-│         │                    │ through     │  - get_canvas_state      │ │
+│  │  - Milkdown  │            │             │  - write_file            │ │
+│  └──────────────┘            │             │  - search_notes          │ │
+│                              │             │  - get_canvas_state      │ │
 │         │ User's OAuth       │             │  - open_window           │ │
 │         │ token              ▼             │  - close_window          │ │
 │         │            ┌──────────────┐      │  - move_window           │ │
@@ -59,18 +63,55 @@ npm run dev
                 └──────────────────┘     └──────────────────┘
 ```
 
-### Data Flow
+**Data Flow**
+- **Reads**: GitHub API (initial load) -> normalized note objects in Svelte state
+- **Edits**: Milkdown editor emits Markdown updates into note state
+- **Writes**: Svelte state -> GitHub API on blur / Cmd+S
+- UI and Agent share the same in-memory note state
 
+### Long-Term Target (Ideal)
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Browser                                                                │
+│                                                                         │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────────────────┐ │
+│  │  Notes UI    │────▶│              │◀────│  Agent Loop              │ │
+│  │              │◀────│  IndexedDB   │────▶│                          │ │
+│  │  - Canvas    │     │  (cache)     │     │  Tools:                  │ │
+│  │  - Windows   │     │              │     │  - list_files            │ │
+│  │  - Sidebar   │     └──────┬───────┘     │  - read_file             │ │
+│  │  - Milkdown  │            │             │  - write_file            │ │
+│  └──────────────┘            │             │  - search_notes          │ │
+│                              │ write-      │  - get_canvas_state      │ │
+│         │                    │ through     │  - open_window           │ │
+│         │ User's OAuth       │             │  - close_window          │ │
+│         │ token              ▼             │  - move_window           │ │
+│         │            ┌──────────────┐      │  - resize_window         │ │
+│         └───────────▶│  GitHub API  │◀─────│                          │ │
+│                      └──────────────┘      └──────────────────────────┘ │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+                               │
+                               │ LLM API (proxied to protect key)
+                               ▼
+                ┌──────────────────┐     ┌──────────────────┐
+                │  Backend         │────▶│  LLM API         │
+                │  /api/chat       │     │  (any provider)  │
+                └──────────────────┘     └──────────────────┘
+```
+
+**Data Flow**
 - **Reads**: IndexedDB (fast, local)
-- **Writes**: IndexedDB → GitHub API (write-through)
-- UI and Agent share the same cache
+- **Writes**: IndexedDB -> GitHub API (write-through)
+- UI and Agent share the same local cache
 
 ### Why GitHub Storage
 
 - User owns their data (it's their repo)
 - Works with Obsidian, VSCode, any editor
 - No server storage needed (privacy)
-- Offline support via IndexedDB
+- Markdown remains canonical storage format
 
 ### Notes Storage Repo Structure
 

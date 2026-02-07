@@ -1,5 +1,4 @@
 <script>
-  import { tick } from 'svelte';
   import { browser } from '$app/environment';
   import { loadAuthToken, saveAuth } from '$lib/auth.js';
   import {
@@ -24,7 +23,6 @@
     DEFAULT_WIDTH,
     DEFAULT_HEIGHT,
   } from '$lib/windowManager.js';
-  import { executeSlashCommand } from '$lib/slashCommand.js';
   import { executeTool } from '$lib/tools.js';
   import { AI_CONFIG } from '$lib/config.js';
   import OnboardingCard from '$lib/components/OnboardingCard.svelte';
@@ -38,7 +36,6 @@
   let windowStates = $state({});
   let topZ = $state(1);
   let sidebarOpen = $state(false);
-  let commandPending = $state(false);
   let hasAuth = $state(false);
   let authToken = $state(null);
   let repoMeta = $state(null);
@@ -62,7 +59,6 @@
   const ASK_PLACEHOLDER = 'Ask a question...';
   const FOLLOWUP_ENABLED = true;
 
-  let contentEls = $state({});
   let dragState = null;
   let resizeState = null;
   let initialized = false;
@@ -113,10 +109,6 @@
       const { [fromId]: ws, ...rest } = windowStates;
       windowStates = { ...rest, [toId]: ws };
       persistStates(windowStates);
-    }
-    if (contentEls[fromId]) {
-      const { [fromId]: el, ...rest } = contentEls;
-      contentEls = { ...rest, [toId]: el };
     }
   };
 
@@ -477,8 +469,6 @@
     const { [id]: _, ...rest } = windowStates;
     windowStates = rest;
     persistStates(windowStates);
-    const { [id]: __, ...restEls } = contentEls;
-    contentEls = restEls;
     const { [id]: ___, ...restFollowups } = followupDrafts;
     followupDrafts = restFollowups;
     const { [id]: ____, ...restFollowupPending } = followupPending;
@@ -624,33 +614,10 @@
     }
   };
 
-  // Slash command
-  const runSlashCommand = async (noteId) => {
-    const contentEl = contentEls[noteId];
-    const note = notes.find((n) => n.id === noteId);
-    if (!contentEl || !note || commandPending) return;
-
-    commandPending = true;
-    try {
-      const result = await executeSlashCommand(note.content ?? '', contentEl.selectionEnd ?? 0);
-      if (result) {
-        updateNoteContent(noteId, result.newContent);
-        await tick();
-        contentEl.setSelectionRange(result.newCaret, result.newCaret);
-        contentEl.focus();
-      }
-    } finally {
-      commandPending = false;
-    }
-  };
-
   const handleContentKeydown = (noteId, event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
       void saveNote(noteId);
-    } else if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-      event.preventDefault();
-      runSlashCommand(noteId);
     }
   };
 
@@ -788,7 +755,6 @@
           <NoteWindow
             {note}
             windowState={win}
-            {commandPending}
             followupValue={followupDrafts[win.noteId] ?? ''}
             followupEnabled={FOLLOWUP_ENABLED}
             followupPending={followupPending[win.noteId] ?? false}
@@ -804,7 +770,6 @@
             onContentChange={(value) => { updateNoteContent(win.noteId, value); }}
             onContentKeydown={(e) => handleContentKeydown(win.noteId, e)}
             onContentBlur={() => void saveNote(win.noteId)}
-            bind:contentElRef={contentEls[win.noteId]}
           />
         {/if}
       {/each}

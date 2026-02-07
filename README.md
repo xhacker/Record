@@ -18,6 +18,8 @@ npm run dev
 
 **Editor**: Milkdown rich-text editing for regular notes with Markdown as canonical document state
 
+**Slash Commands**: ProseMirror-aware command insertion in note editor (`/prompt` + Cmd/Ctrl+Enter)
+
 **Grid**: 40px snap for all window positions and sizes
 
 **Sidebar**: Note pills wrap long filenames (no horizontal scrolling)

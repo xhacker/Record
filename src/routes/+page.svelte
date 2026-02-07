@@ -25,6 +25,7 @@
   } from '$lib/windowManager.js';
   import { executeTool } from '$lib/tools.js';
   import { AI_CONFIG } from '$lib/config.js';
+  import { buildCommandPrompt } from '$lib/slashCommand.js';
   import OnboardingCard from '$lib/components/OnboardingCard.svelte';
   import Sidebar from '$lib/components/Sidebar.svelte';
   import TranscriptList from '$lib/components/TranscriptList.svelte';
@@ -224,6 +225,20 @@
     refreshNotes: () => void loadFromGitHub(),
   });
 
+  const requestChat = async (requestBody, fallbackError) => {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error ?? fallbackError);
+    }
+    return payload;
+  };
+
   const runAskLoop = async ({ prompt }) => {
     const MAX_TOOL_ROUNDS = 5;
     let messages = null; // null = use prompt, array = use messages
@@ -241,17 +256,7 @@
         useTools: AI_CONFIG.useTools && !!authToken,
         ...(messages ? { messages } : { prompt }),
       };
-
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? 'Failed to ask AI.');
-      }
+      const payload = await requestChat(requestBody, 'Failed to ask AI.');
 
       if (payload.tool_calls && payload.tool_calls.length > 0) {
         if (!messages) {
@@ -288,6 +293,25 @@
     }
 
     throw new Error('Too many tool calling rounds.');
+  };
+
+  const runContentCommand = async ({ paragraphWithoutCommand, commandText }) => {
+    const payload = await requestChat(
+      {
+        prompt: buildCommandPrompt({ paragraphWithoutCommand, commandText }),
+        model: AI_CONFIG.commandModel,
+        temperature: AI_CONFIG.commandTemperature,
+        max_completion_tokens: AI_CONFIG.commandMaxTokens,
+        top_p: 1,
+      },
+      'Failed to run slash command.'
+    );
+
+    const replacement = (payload?.content ?? '').trim();
+    if (!replacement) {
+      throw new Error('Slash command returned no content.');
+    }
+    return replacement;
   };
 
   const buildFollowupPrompt = (transcriptContent, userPrompt) => [
@@ -770,6 +794,8 @@
             onContentChange={(value) => { updateNoteContent(win.noteId, value); }}
             onContentKeydown={(e) => handleContentKeydown(win.noteId, e)}
             onContentBlur={() => void saveNote(win.noteId)}
+            onContentCommand={runContentCommand}
+            onContentCommandError={(message) => { notesError = message; }}
           />
         {/if}
       {/each}

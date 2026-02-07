@@ -14,6 +14,8 @@
     onContentChange,
     onContentKeydown,
     onContentBlur,
+    onContentCommand,
+    onContentCommandError,
     followupValue = '',
     followupEnabled = false,
     followupPending = false,
@@ -194,6 +196,8 @@
       onChange={onContentChange}
       onKeydown={onContentKeydown}
       onBlur={onContentBlur}
+      onSlashCommand={onContentCommand}
+      onSlashCommandError={onContentCommandError}
     />
   {/if}
   <div

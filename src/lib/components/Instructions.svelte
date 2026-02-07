@@ -5,6 +5,10 @@
     <span class="inline-chip">⌘</span> + <span class="inline-chip">I</span> for italics
   </p>
   <p class="shortcuts-instructions-body">
+    Type <span class="inline-chip">/</span> and press
+    <span class="inline-chip">⌘</span> + <span class="inline-chip">↵</span> to run slash command
+  </p>
+  <p class="shortcuts-instructions-body">
     <span class="inline-chip">⌘</span> + <span class="inline-chip">S</span> to save,
     double-click title bar to rename
   </p>

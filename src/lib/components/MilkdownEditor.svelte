@@ -1,5 +1,6 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import { getSlashContextFromDocument, getSlashContextFromParagraph } from '$lib/slashCommand.js';
 
   let {
     value = '',
@@ -7,19 +8,137 @@
     onChange,
     onBlur,
     onKeydown,
+    onSlashCommand,
+    onSlashCommandError,
   } = $props();
 
   let editorRoot = $state(null);
+  let fallbackEl = $state(null);
   let editorReady = $state(false);
   let editorFailed = $state(false);
   let focused = $state(false);
   let markdown = $state('');
+  let slashPending = $state(false);
 
   let editor = null;
   let replaceAllCommand = null;
+  let editorViewCtxKey = null;
+  let removeEditorKeyListener = null;
+
+  const isModEnter = (event) => {
+    if (!(event.metaKey || event.ctrlKey)) return false;
+    return event.key === 'Enter' || event.key === 'NumpadEnter';
+  };
+
+  const reportSlashCommandError = (error) => {
+    const message = error?.message ?? 'Failed to run slash command.';
+    onSlashCommandError?.(message);
+  };
+
+  const requestSlashReplacement = async (context) => {
+    if (!onSlashCommand) return '';
+    const replacement = await onSlashCommand({
+      paragraphWithoutCommand: context.paragraphWithoutCommand,
+      commandText: context.commandText,
+    });
+    const normalized = (replacement ?? '').trim();
+    if (!normalized) {
+      throw new Error('Slash command returned no content.');
+    }
+    return normalized;
+  };
+
+  const runSlashCommandInEditor = async () => {
+    if (!editorReady || !editor || !editorViewCtxKey || !onSlashCommand || slashPending) return;
+
+    slashPending = true;
+    try {
+      let snapshot = null;
+      await editor.action((ctx) => {
+        const view = ctx.get(editorViewCtxKey);
+        const { state } = view;
+        if (!state.selection.empty) return;
+
+        const selectionAnchor = state.selection.$from;
+        if (!selectionAnchor.parent?.isTextblock) return;
+
+        const paragraphText = selectionAnchor.parent.textContent ?? '';
+        const paragraphStart = selectionAnchor.start();
+        const cursorInParagraph = state.selection.from - paragraphStart;
+        const context = getSlashContextFromParagraph(paragraphText, cursorInParagraph);
+        if (!context) return;
+
+        snapshot = {
+          paragraphStart,
+          command: context.command,
+          commandText: context.commandText,
+          paragraphWithoutCommand: context.paragraphWithoutCommand,
+        };
+      });
+
+      if (!snapshot) {
+        throw new Error('No slash command found before the cursor in this paragraph.');
+      }
+      const replacement = await requestSlashReplacement(snapshot);
+
+      await editor.action((ctx) => {
+        const view = ctx.get(editorViewCtxKey);
+        const from = snapshot.paragraphStart + snapshot.command.start;
+        const to = snapshot.paragraphStart + snapshot.command.end;
+        const currentCommand = view.state.doc.textBetween(from, to, '\n', '\n').trim();
+        if (currentCommand !== snapshot.commandText.trim()) {
+          throw new Error('Slash command context changed. Try again.');
+        }
+        const tr = view.state.tr.insertText(replacement, from, to);
+        view.dispatch(tr.scrollIntoView());
+      });
+    } catch (error) {
+      reportSlashCommandError(error);
+    } finally {
+      slashPending = false;
+    }
+  };
+
+  const runSlashCommandInFallback = async () => {
+    if (!fallbackEl || !onSlashCommand || slashPending) return;
+
+    const cursor = fallbackEl.selectionEnd ?? 0;
+    const context = getSlashContextFromDocument(markdown, cursor);
+    if (!context) {
+      reportSlashCommandError(new Error('No slash command found before the cursor in this paragraph.'));
+      return;
+    }
+
+    slashPending = true;
+    try {
+      const replacement = await requestSlashReplacement(context);
+      const from = context.paragraphStart + context.command.start;
+      const to = context.paragraphStart + context.command.end;
+      const nextContent = markdown.slice(0, from) + replacement + markdown.slice(to);
+      const nextCaret = from + replacement.length;
+
+      markdown = nextContent;
+      onChange?.(nextContent);
+      await tick();
+      fallbackEl.setSelectionRange(nextCaret, nextCaret);
+      fallbackEl.focus();
+    } catch (error) {
+      reportSlashCommandError(error);
+    } finally {
+      slashPending = false;
+    }
+  };
 
   const handleKeydown = (event) => {
     onKeydown?.(event);
+    if (!isModEnter(event)) return;
+
+    event.preventDefault();
+    if (editorFailed) {
+      void runSlashCommandInFallback();
+    } else {
+      void runSlashCommandInEditor();
+    }
   };
 
   const syncEditorFromValue = async (nextValue) => {
@@ -44,7 +163,7 @@
     const initEditor = async () => {
       try {
         const [
-          { Editor, rootCtx, defaultValueCtx },
+          { Editor, rootCtx, defaultValueCtx, editorViewCtx },
           { commonmark },
           { history },
           { listener, listenerCtx },
@@ -62,6 +181,7 @@
         if (cancelled || !editorRoot) return;
 
         replaceAllCommand = replaceAll;
+        editorViewCtxKey = editorViewCtx;
         editor = Editor.make()
           .config(nord)
           .config((ctx) => {
@@ -87,7 +207,26 @@
 
         await editor.create();
 
+        await editor.action((ctx) => {
+          const view = ctx.get(editorViewCtx);
+          const keyCaptureHandler = (event) => {
+            onKeydown?.(event);
+            if (!isModEnter(event)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            void runSlashCommandInEditor();
+          };
+          view.dom.addEventListener('keydown', keyCaptureHandler, true);
+          removeEditorKeyListener = () => {
+            view.dom.removeEventListener('keydown', keyCaptureHandler, true);
+          };
+        });
+
         if (cancelled) {
+          if (removeEditorKeyListener) {
+            removeEditorKeyListener();
+            removeEditorKeyListener = null;
+          }
           await editor.destroy();
           editor = null;
           return;
@@ -105,6 +244,11 @@
     return () => {
       cancelled = true;
       editorReady = false;
+      editorViewCtxKey = null;
+      if (removeEditorKeyListener) {
+        removeEditorKeyListener();
+        removeEditorKeyListener = null;
+      }
       if (editor) {
         void editor.destroy();
         editor = null;
@@ -118,6 +262,7 @@
     class="editor-fallback"
     placeholder={placeholder}
     value={markdown}
+    bind:this={fallbackEl}
     oninput={(event) => {
       const nextValue = event.target.value;
       markdown = nextValue;
@@ -129,12 +274,13 @@
 {:else}
   <div
     class:show-placeholder={!markdown.trim() && !focused}
+    class:pending={slashPending}
     class="editor-shell"
     data-placeholder={placeholder}
     role="textbox"
     aria-multiline="true"
+    aria-busy={slashPending}
     tabindex="-1"
-    onkeydown={handleKeydown}
   >
     <div class="editor-root" bind:this={editorRoot}></div>
   </div>
@@ -147,6 +293,10 @@
     height: 100%;
     user-select: text;
     cursor: text;
+  }
+
+  .editor-shell.pending {
+    cursor: progress;
   }
 
   .editor-shell.show-placeholder::before {

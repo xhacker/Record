@@ -55,25 +55,6 @@ export interface RepoMeta {
   defaultBranch: string;
 }
 
-/** Parsed transcript content */
-export interface TranscriptContent {
-  /** Thread identifier for the conversation */
-  threadId: string;
-  /** Parsed conversation turns */
-  turns: TranscriptTurn[];
-  /** Fallback assistant text when no turns are present */
-  assistantText?: string;
-}
-
-export interface TranscriptTurn {
-  /** User's message (plain text, sanitized) */
-  userText: string;
-  /** Tool results captured from transcript tool code blocks */
-  toolResults?: Array<{ tool: string; content: string }>;
-  /** Assistant's response (plain text) */
-  assistantText: string;
-}
-
 /** Parsed frontmatter result */
 export interface FrontmatterResult {
   /** Parsed key-value pairs from frontmatter */

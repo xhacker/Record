@@ -16,7 +16,7 @@ npm run dev
 - `the-record-auth` — GitHub PAT (MVP)
 - `the-record-states` — window positions, sizes, visibility
 
-**Editor**: Milkdown rich-text editing for regular notes with Markdown as canonical document state
+**Editor**: Milkdown rich-text editing for notes and transcripts with Markdown as canonical document state
 
 **Slash Commands**: ProseMirror-aware command insertion in note editor (`/prompt` + Cmd/Ctrl+Enter)
 
@@ -128,8 +128,8 @@ transcripts/
 
 ### Transcript Format
 
-Transcripts are stored as Markdown files with frontmatter and a user bubble.
-Assistant content is plain text (no Markdown rendering yet).
+Transcripts are stored as Markdown files with frontmatter.
+Each user turn uses a bubble HTML block, optional tool-result code fences, then assistant text.
 
 ```
 ---
@@ -138,6 +138,12 @@ thread_id: 2026-02-03T13:00:00-0800
 ---
 
 <div class="bubble user">Your question here.</div>
+
+```tool:list_files
+{
+  "files": []
+}
+```
 
 Assistant response here.
 ```

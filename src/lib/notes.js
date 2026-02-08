@@ -1,6 +1,5 @@
 /** @typedef {import('./types').Note} Note */
 /** @typedef {import('./types').NoteType} NoteType */
-/** @typedef {import('./types').TranscriptContent} TranscriptContent */
 /** @typedef {import('./types').FrontmatterResult} FrontmatterResult */
 
 /**
@@ -28,6 +27,9 @@ const escapeHtml = (value = '') =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const escapeCodeFence = (value = '') =>
+  value.replace(/```/g, '``\\`');
+
 const unescapeHtml = (value = '') =>
   value
     .replace(/&#39;/g, "'")
@@ -42,9 +44,6 @@ const stripHtmlTags = (value = '') =>
 const sanitizeBubbleText = (rawContent = '') =>
   unescapeHtml(stripHtmlTags(rawContent));
 
-const escapeCodeFence = (value = '') =>
-  value.replace(/```/g, '``\\`');
-
 export const formatToolResult = (value) => {
   const trimmed = (value ?? '').toString().trim();
   if (!trimmed) return '';
@@ -53,27 +52,6 @@ export const formatToolResult = (value) => {
   } catch {
     return trimmed;
   }
-};
-
-const parseToolResults = (value = '') => {
-  let remainder = value.trimStart();
-  const toolResults = [];
-
-  while (true) {
-    const codeMatch = remainder.match(TOOL_CODE_BLOCK_LEADING_REGEX);
-    if (codeMatch) {
-      toolResults.push({
-        tool: (codeMatch[1] ?? 'tool').trim(),
-        content: (codeMatch[2] ?? '').trim(),
-      });
-      remainder = remainder.slice(codeMatch[0].length).trimStart();
-      continue;
-    }
-
-    break;
-  }
-
-  return { toolResults, remainder };
 };
 
 const buildToolBlocks = (toolResults = []) =>
@@ -93,10 +71,12 @@ export const buildTranscriptTurn = ({ userPrompt, assistantContent, toolResults 
 
   return [
     `<div class="bubble user">${safePrompt}</div>`,
-    '',
-    ...(toolBlocks.length ? [...toolBlocks, ''] : []),
+    ...toolBlocks,
     assistant,
-  ].join('\n').trimEnd();
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+    .trimEnd();
 };
 
 /**
@@ -127,6 +107,31 @@ export const parseFrontmatter = (content = '') => {
   };
 };
 
+const serializeFrontmatter = (data = {}) => {
+  const { type, thread_id, ...rest } = data;
+  const orderedEntries = [
+    ['type', type],
+    ['thread_id', thread_id],
+    ...Object.entries(rest).sort(([a], [b]) => a.localeCompare(b)),
+  ].filter(([, value]) => value != null && String(value).trim() !== '');
+
+  if (!orderedEntries.length) return '';
+
+  return [
+    '---',
+    ...orderedEntries.map(([key, value]) => `${key}: ${String(value).trim()}`),
+    '---',
+  ].join('\n');
+};
+
+const buildTranscriptDocument = (data = {}, body = '') => {
+  const frontmatter = serializeFrontmatter({ ...data, type: 'transcript' });
+  const trimmedBody = (body ?? '').trim();
+  if (!frontmatter) return trimmedBody;
+  if (!trimmedBody) return frontmatter;
+  return `${frontmatter}\n\n${trimmedBody}`;
+};
+
 /**
  * Get note type from content frontmatter
  * @param {string} [content]
@@ -139,10 +144,27 @@ export const getNoteTypeFromContent = (content = '') => {
 
 export const stripFrontmatter = (content = '') => parseFrontmatter(content).body;
 
+const parseToolResults = (value = '') => {
+  let remainder = value.trimStart();
+  const toolResults = [];
+
+  while (true) {
+    const codeMatch = remainder.match(TOOL_CODE_BLOCK_LEADING_REGEX);
+    if (!codeMatch) break;
+    toolResults.push({
+      tool: (codeMatch[1] ?? 'tool').trim(),
+      content: (codeMatch[2] ?? '').trim(),
+    });
+    remainder = remainder.slice(codeMatch[0].length).trimStart();
+  }
+
+  return { toolResults, remainder };
+};
+
 /**
- * Parse transcript content, extracting user and assistant messages
+ * Parse transcript markdown using user bubble HTML and optional tool result blocks.
  * @param {string} [content]
- * @returns {TranscriptContent}
+ * @returns {{ threadId: string; turns: Array<{ userText: string; toolResults?: Array<{ tool: string; content: string }>; assistantText: string }>; assistantText?: string }}
  */
 export const parseTranscriptContent = (content = '') => {
   const { data, body } = parseFrontmatter(content);
@@ -154,6 +176,7 @@ export const parseTranscriptContent = (content = '') => {
       turns: [],
     };
   }
+
   const turns = matches.map((match, index) => {
     const segmentStart = (match.index ?? 0) + match[0].length;
     const segmentEnd = matches[index + 1]?.index ?? body.length;
@@ -171,6 +194,14 @@ export const parseTranscriptContent = (content = '') => {
     turns,
   };
 };
+
+// Legacy compatibility exports: transcript content is now edited as raw markdown.
+export const getTranscriptEditorContent = (content = '') => (content ?? '').toString();
+
+export const setTranscriptEditorContent = (_originalContent = '', editorBody = '') =>
+  (editorBody ?? '').toString();
+
+export const normalizeTranscriptContent = (content = '') => (content ?? '').toString();
 
 export const formatTranscriptTimestamp = (value = new Date()) => {
   const year = value.getFullYear();
@@ -205,21 +236,19 @@ export const getUniquePath = (path, existingPaths) => {
 
 export const buildTranscriptContent = ({ threadId, userPrompt, assistantContent, toolResults = [] }) => {
   const turn = buildTranscriptTurn({ userPrompt, assistantContent, toolResults });
-  return [
-    '---',
-    'type: transcript',
-    `thread_id: ${threadId}`,
-    '---',
-    '',
-    turn,
-  ].join('\n');
+  return buildTranscriptDocument({ type: 'transcript', thread_id: threadId }, turn);
 };
 
 export const appendTranscriptContent = (content = '', { userPrompt, assistantContent, toolResults = [] }) => {
-  const base = (content ?? '').trimEnd();
+  const { data, body } = parseFrontmatter(content);
+  const base = (body ?? '').trim();
   const turn = buildTranscriptTurn({ userPrompt, assistantContent, toolResults });
-  if (!base) return turn;
-  return `${base}\n\n${turn}`;
+  const nextBody = base ? `${base}\n\n${turn}` : turn;
+  const nextData = {
+    ...data,
+    type: 'transcript',
+  };
+  return buildTranscriptDocument(nextData, nextBody);
 };
 
 export const getNextDateFilename = (base, existingPaths) => {
@@ -240,14 +269,20 @@ export const getNextDateFilename = (base, existingPaths) => {
  * @param {Partial<Note>} note
  * @returns {Note}
  */
-export const normalizeNote = (note) => ({
-  ...note,
-  type: note.type ?? getNoteTypeFromContent(note.content ?? ''),
-  savedContent: note.content ?? '',
-  dirty: false,
-  saving: false,
-  sha: note.sha ?? null,
-});
+export const normalizeNote = (note) => {
+  const type = note.type ?? getNoteTypeFromContent(note.content ?? '');
+  const content = note.content ?? '';
+
+  return {
+    ...note,
+    type,
+    content,
+    savedContent: content,
+    dirty: false,
+    saving: false,
+    sha: note.sha ?? null,
+  };
+};
 
 /**
  * Create a new note object (not yet saved)

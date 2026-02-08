@@ -1,6 +1,6 @@
 <script>
   import { DEFAULT_WIDTH, DEFAULT_HEIGHT } from '$lib/windowManager.js';
-  import { formatToolResult, getDisplayName, parseTranscriptContent } from '$lib/notes.js';
+  import { getDisplayName } from '$lib/notes.js';
   import MilkdownEditor from '$lib/components/MilkdownEditor.svelte';
 
   let {
@@ -30,7 +30,7 @@
 
   const displayName = $derived.by(() => getDisplayName(note));
   const isTranscript = $derived.by(() => note?.type === 'transcript');
-  const transcript = $derived.by(() => (isTranscript ? parseTranscriptContent(note?.content ?? '') : null));
+  const editorValue = $derived.by(() => note?.content ?? '');
   const status = $derived.by(() => {
     if (note?.saving) {
       return { label: 'Saving', ellipsis: true };
@@ -57,18 +57,15 @@
     editingTitle = false;
   };
 
+  const handleContentChange = (value) => {
+    onContentChange?.(value);
+  };
+
   function focusOnMount(node) {
     node.focus();
     node.select();
   }
-
-  let toolDetailsOpen = $state({});
-
-  const toggleToolDetails = (index) => {
-    toolDetailsOpen = { ...toolDetailsOpen, [index]: !toolDetailsOpen[index] };
-  };
-
-  </script>
+</script>
 
 <section
   class:transcript={isTranscript}
@@ -82,11 +79,14 @@
     role="toolbar"
     tabindex="-1"
     onpointerdown={onDragStart}
-    ondblclick={() => { editingTitle = true; draftTitle = displayName.base; }}
+    ondblclick={() => {
+      editingTitle = true;
+      draftTitle = displayName.base;
+    }}
   >
     <button class="window-close" type="button" aria-label="Close note" onclick={onClose}>
       <svg viewBox="0 0 14 14" fill="none">
-        <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
       </svg>
     </button>
     {#if editingTitle}
@@ -95,7 +95,9 @@
         type="text"
         placeholder="Untitled"
         value={draftTitle}
-        oninput={(e) => { draftTitle = e.target.value; }}
+        oninput={(e) => {
+          draftTitle = e.target.value;
+        }}
         onblur={commitTitle}
         onkeydown={(e) => {
           if (e.key === 'Enter') {
@@ -120,90 +122,49 @@
       </span>
     {/if}
   </div>
+
+  <div class="note-editor">
+    <MilkdownEditor
+      value={editorValue}
+      placeholder={isTranscript ? 'Transcript markdown...' : 'Write your note...'}
+      onChange={handleContentChange}
+      onKeydown={onContentKeydown}
+      onBlur={onContentBlur}
+      onSlashCommand={onContentCommand}
+      onSlashCommandError={onContentCommandError}
+    />
+  </div>
+
   {#if isTranscript}
-    <div class="note-content transcript-body" aria-live="polite">
-      {#if transcript?.turns?.length}
-        {#each transcript.turns as turn, turnIndex}
-          {#if turn.userText}
-            <div class="bubble user">{turn.userText}</div>
-          {/if}
-          {#if turn.toolResults?.length}
-            {@const toolSummary = turn.toolResults
-              .map((result) => result?.tool)
-              .filter(Boolean)
-              .join(', ')}
-            {@const isOpen = !!toolDetailsOpen[turnIndex]}
-            <div class="bubble tool">
-              <button
-                class="tool-toggle"
-                type="button"
-                aria-expanded={isOpen}
-                onclick={() => toggleToolDetails(turnIndex)}
-              >
-                <span>Calling tools{toolSummary ? `: ${toolSummary}` : ''}</span>
-                <svg class="tool-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path
-                    d="M6 3.5l4 4-4 4"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </button>
-              {#if isOpen}
-                <div class="tool-details">
-                  {#each turn.toolResults as result, idx (`${turnIndex}:${idx}`)}
-                    <div class="tool-entry">
-                      <div class="tool-label">{result.tool}</div>
-                      <pre class="tool-content">{formatToolResult(result.content)}</pre>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {/if}
-          {#if turn.assistantText}
-            <div class="assistant-text">{turn.assistantText}</div>
-          {/if}
-        {/each}
-      {:else if transcript?.assistantText}
-        <div class="assistant-text">{transcript.assistantText}</div>
-      {/if}
-    </div>
     <div class="transcript-followup">
       <input
         class="followup-input"
         type="text"
         value={followupValue}
-        placeholder={followupEnabled ? (followupPending ? 'Thinking...' : 'Ask a follow-up...') : 'Follow-ups coming soon...'}
+        placeholder={followupEnabled
+          ? followupPending
+            ? 'Thinking...'
+            : 'Ask a follow-up...'
+          : 'Follow-ups coming soon...'}
         disabled={!followupEnabled || followupPending}
         oninput={(e) => onFollowupChange?.(e.target.value)}
         onkeydown={onFollowupKeydown}
       />
-      <button class="followup-send" type="button" onclick={onFollowupSubmit} disabled={!followupEnabled || followupPending}>
+      <button
+        class="followup-send"
+        type="button"
+        onclick={onFollowupSubmit}
+        disabled={!followupEnabled || followupPending}
+      >
         {followupPending ? 'Thinking...' : 'Ask'}
       </button>
     </div>
     {#if followupError}
       <p class="followup-error" role="alert">{followupError}</p>
     {/if}
-  {:else}
-    <MilkdownEditor
-      value={note.content}
-      placeholder="Write your note..."
-      onChange={onContentChange}
-      onKeydown={onContentKeydown}
-      onBlur={onContentBlur}
-      onSlashCommand={onContentCommand}
-      onSlashCommandError={onContentCommandError}
-    />
   {/if}
-  <div
-    class="note-resize-handle"
-    onpointerdown={onResizeStart}
-  ></div>
+
+  <div class="note-resize-handle" onpointerdown={onResizeStart}></div>
 </section>
 
 <style>
@@ -228,6 +189,10 @@
 
   .note.transcript {
     grid-template-rows: auto 1fr auto;
+  }
+
+  .note-editor {
+    min-height: 0;
   }
 
   .note-titlebar {
@@ -330,130 +295,32 @@
     color: transparent;
   }
 
-  .note-content {
-    border: none;
-    outline: none;
-    background: transparent;
-    resize: none;
-    min-height: 0;
-    line-height: 1.6;
-    color: var(--ink);
-    font-size: 1rem;
-    padding: clamp(20px, 4vw, 32px);
-    user-select: text;
-    cursor: text;
-  }
-
-  .note-content::placeholder {
-    color: var(--muted);
-  }
-
-  .transcript-body {
-    padding: clamp(20px, 4vw, 28px);
-    overflow-y: auto;
-    display: grid;
-    gap: 16px;
-    color: var(--ink);
-    user-select: text;
-  }
-
-  .transcript-body .bubble {
+  .note.transcript :global(.milkdown .editor .bubble) {
+    display: block;
+    width: fit-content;
     max-width: min(520px, 90%);
     padding: 10px 14px;
-    font-size: 0.95rem;
-    line-height: 1.5;
-    box-shadow: 0 12px 20px rgba(16, 22, 22, 0.1);
+    border-radius: 16px 16px 4px 16px;
+    margin: 0.4rem 0 0.8rem auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     word-break: break-word;
-  }
-
-  .transcript-body .bubble.user {
-    align-self: flex-end;
-    border-radius: 16px 16px 4px 16px;
     background: linear-gradient(140deg, rgba(234, 129, 70, 0.2), rgba(214, 90, 24, 0.2));
     border: 1px solid rgba(214, 90, 24, 0.2);
     color: rgba(82, 39, 19, 0.95);
     box-shadow: 0 12px 20px rgba(214, 90, 24, 0.12);
   }
 
-  .transcript-body .bubble.tool {
-    align-self: flex-start;
-    padding: 0;
-    border-radius: 16px 16px 16px 4px;
-    background: linear-gradient(140deg, rgba(10, 115, 104, 0.16), rgba(10, 115, 104, 0.08));
-    border: 1px solid rgba(10, 115, 104, 0.22);
-    color: rgba(6, 68, 62, 0.95);
-    box-shadow: 0 12px 20px rgba(10, 115, 104, 0.1);
-    overflow: hidden;
-  }
-
-  .transcript-body .tool-toggle {
-    width: 100%;
-    border: none;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    text-align: left;
-    cursor: pointer;
-    padding: 10px 14px;
-  }
-
-  .transcript-body .tool-toggle:focus-visible {
-    outline: 2px solid rgba(10, 115, 104, 0.35);
-    outline-offset: -2px;
-  }
-
-  .transcript-body .tool-chevron {
-    width: 14px;
-    height: 14px;
-    transition: transform 0.15s ease;
-    flex-shrink: 0;
-  }
-
-  .transcript-body .tool-toggle[aria-expanded="true"] .tool-chevron {
-    transform: rotate(90deg);
-  }
-
-  .transcript-body .tool-details {
-    border-top: 1px solid rgba(10, 115, 104, 0.18);
-    padding: 10px 14px 12px;
-    display: grid;
-    gap: 12px;
-  }
-
-  .transcript-body .tool-entry {
-    display: grid;
-    gap: 6px;
-  }
-
-  .transcript-body .tool-label {
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: rgba(6, 68, 62, 0.7);
-    margin-bottom: 8px;
-  }
-
-  .transcript-body .tool-content {
-    margin: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.84rem;
+  .note.transcript :global(.milkdown .editor pre code) {
+    font-size: 0.82rem;
     line-height: 1.45;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    background: rgba(10, 115, 104, 0.1);
+    border: 1px solid rgba(10, 115, 104, 0.2);
   }
 
-  .assistant-text {
-    font-size: 0.95rem;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    color: rgba(16, 22, 22, 0.85);
+  .note.transcript :global(.milkdown .editor hr) {
+    margin: 0.8rem 0 1rem;
+    opacity: 0.35;
   }
 
   .transcript-followup {

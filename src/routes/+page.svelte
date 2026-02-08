@@ -317,9 +317,10 @@
   const buildFollowupPrompt = (transcriptContent, userPrompt) => [
     'You are continuing a conversation.',
     'Transcript format:',
-    '- Each turn starts with <div class="bubble user">USER</div>.',
-    '- Tool results (if any) appear as ```tool:tool_name``` code blocks immediately after the user bubble.',
-    '- Assistant responses are the plain text following those tool blocks until the next user bubble.',
+    '- Frontmatter includes type/thread metadata.',
+    '- Each user turn starts with <div class="bubble user">USER</div>.',
+    '- Tool results (if any) appear as ```tool:tool_name``` code blocks after the user bubble.',
+    '- Assistant response text follows the tool blocks.',
     '',
     'Full transcript markdown:',
     '---BEGIN TRANSCRIPT---',

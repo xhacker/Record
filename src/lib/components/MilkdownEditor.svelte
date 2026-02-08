@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { getSlashContextFromDocument, getSlashContextFromParagraph } from '$lib/slashCommand.js';
+  import { createTranscriptHtmlView } from '$lib/milkdown/transcriptHtmlView.js';
 
   let {
     value = '',
@@ -164,11 +165,11 @@
       try {
         const [
           { Editor, rootCtx, defaultValueCtx, editorViewCtx },
-          { commonmark },
+          { commonmark, htmlSchema },
           { history },
           { listener, listenerCtx },
           { nord },
-          { replaceAll },
+          milkdownUtils,
         ] = await Promise.all([
           import('@milkdown/core'),
           import('@milkdown/preset-commonmark'),
@@ -180,8 +181,12 @@
 
         if (cancelled || !editorRoot) return;
 
-        replaceAllCommand = replaceAll;
+        replaceAllCommand = milkdownUtils.replaceAll;
         editorViewCtxKey = editorViewCtx;
+        const transcriptHtmlView = createTranscriptHtmlView({
+          htmlSchema,
+          viewFactory: milkdownUtils.$view,
+        });
         editor = Editor.make()
           .config(nord)
           .config((ctx) => {
@@ -202,6 +207,7 @@
             });
           })
           .use(commonmark)
+          .use(transcriptHtmlView)
           .use(history)
           .use(listener);
 

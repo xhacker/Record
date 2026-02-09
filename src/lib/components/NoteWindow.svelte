@@ -119,34 +119,34 @@
           {#if displayName.ext}
             <span class="note-title-ext">{displayName.ext}</span>
           {/if}
-          <button
-            class="note-title-open"
-            type="button"
-            aria-label="Open file on GitHub"
-            title={canOpenOnGitHub ? 'Open on GitHub' : 'GitHub link unavailable'}
-            disabled={!canOpenOnGitHub}
-            onpointerdown={(event) => {
-              event.stopPropagation();
-            }}
-            onclick={(event) => {
-              event.stopPropagation();
-              onOpenOnGitHub?.();
-            }}
-          >
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path
-                d="M4 12L12 4M6.5 4H12V9.5"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
         </span>
         {#if status}
           <span class="note-title-status">&nbsp;&mdash; {status.label}{#if status.ellipsis}&hellip;{/if}</span>
         {/if}
+        <button
+          class="note-title-open"
+          type="button"
+          aria-label="Open file on GitHub"
+          title={canOpenOnGitHub ? 'Open on GitHub' : 'GitHub link unavailable'}
+          disabled={!canOpenOnGitHub}
+          onpointerdown={(event) => {
+            event.stopPropagation();
+          }}
+          onclick={(event) => {
+            event.stopPropagation();
+            onOpenOnGitHub?.();
+          }}
+        >
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M4 12L12 4M6.5 4H12V9.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
       </span>
     {/if}
   </div>

@@ -23,10 +23,7 @@
       <div class:active={isOpen} class="sidebar-note" role="listitem">
         <button class="sidebar-note-body" type="button" onclick={() => onToggleWindow(note.id)}>
           <span class="sidebar-note-title">
-            <span class="note-name">{name.base}</span>
-            {#if name.ext}
-              <span class="note-ext">{name.ext}</span>
-            {/if}
+            <span class="note-name">{name.base}</span>{#if name.ext}<span class="note-ext">{name.ext}</span>{/if}
           </span>
         </button>
         <button class="note-delete" type="button" onclick={() => onDeleteNote(note.id)}>

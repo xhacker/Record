@@ -327,23 +327,32 @@
   }
 
   .editor-root :global(.milkdown .editor) {
+    --prose-font-size: clamp(1.02rem, 0.16vw + 0.98rem, 1.1rem);
+    --prose-line-height: 1.74;
+    --prose-measure: 74ch;
     height: 100%;
     min-height: 100%;
     border: none;
     outline: none;
     background: transparent;
     resize: none;
-    line-height: 1.6;
+    line-height: var(--prose-line-height);
     color: var(--ink);
-    font-size: 1rem;
+    font-size: var(--prose-font-size);
     padding: clamp(20px, 4vw, 32px);
     font-family: var(--font-ui);
     overflow-y: auto;
     overscroll-behavior: contain;
+    text-wrap: pretty;
+    text-rendering: optimizeLegibility;
   }
 
   .editor-root :global(.milkdown .editor:focus) {
     outline: none;
+  }
+
+  .editor-root :global(.milkdown .editor > *) {
+    max-width: var(--prose-measure);
   }
 
   .editor-root :global(.milkdown .editor > *:first-child) {
@@ -354,13 +363,87 @@
     margin-bottom: 0;
   }
 
+  .editor-root :global(.milkdown .editor p) {
+    margin: 0.3em 0 0.95em;
+    line-height: 1.78;
+  }
+
+  .editor-root :global(.milkdown .editor h1),
+  .editor-root :global(.milkdown .editor h2),
+  .editor-root :global(.milkdown .editor h3),
+  .editor-root :global(.milkdown .editor h4) {
+    line-height: 1.2;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+    font-family: var(--font-ui);
+    margin: 1.1em 0 0.45em;
+  }
+
+  .editor-root :global(.milkdown .editor h1) {
+    margin-top: 0.12em;
+    font-size: clamp(2rem, 1.28rem + 1.82vw, 2.9rem);
+    font-weight: 700;
+  }
+
+  .editor-root :global(.milkdown .editor h2) {
+    font-size: clamp(1.62rem, 1.16rem + 1.05vw, 2.15rem);
+    font-weight: 680;
+  }
+
+  .editor-root :global(.milkdown .editor h3) {
+    font-size: clamp(1.34rem, 1.06rem + 0.62vw, 1.68rem);
+    font-weight: 650;
+  }
+
+  .editor-root :global(.milkdown .editor h4) {
+    font-size: clamp(1.16rem, 1.03rem + 0.35vw, 1.32rem);
+    font-weight: 620;
+  }
+
+  .editor-root :global(.milkdown .editor h1 + p),
+  .editor-root :global(.milkdown .editor h2 + p),
+  .editor-root :global(.milkdown .editor h3 + p),
+  .editor-root :global(.milkdown .editor h4 + p) {
+    margin-top: 0.26em;
+  }
+
+  .editor-root :global(.milkdown .editor ul),
+  .editor-root :global(.milkdown .editor ol) {
+    margin: 0.4em 0 1.04em;
+    padding-left: 1.38em;
+  }
+
+  .editor-root :global(.milkdown .editor li) {
+    margin: 0.32em 0;
+    line-height: 1.72;
+    padding-left: 0.08em;
+  }
+
+  .editor-root :global(.milkdown .editor li > p) {
+    margin: 0.2em 0;
+  }
+
+  .editor-root :global(.milkdown .editor blockquote) {
+    margin: 1em 0 1.18em;
+    padding: 0.14em 0 0.14em 1em;
+    border-left: 3px solid rgba(16, 22, 22, 0.16);
+    color: rgba(16, 22, 22, 0.78);
+  }
+
+  .editor-root :global(.milkdown .editor hr) {
+    margin: 1.45em 0 1.25em;
+    border: none;
+    border-top: 1px solid rgba(16, 22, 22, 0.16);
+  }
+
   .editor-root :global(.milkdown a) {
     color: var(--sea);
     text-decoration-color: rgba(10, 115, 104, 0.35);
+    text-underline-offset: 0.14em;
   }
 
   .editor-root :global(.milkdown code) {
-    font-size: 0.9em;
+    font-size: 0.86em;
     padding: 0.05em 0.35em;
     border-radius: 0.35em;
     background: rgba(16, 22, 22, 0.08);
@@ -368,10 +451,11 @@
 
   .editor-root :global(.milkdown pre code) {
     display: block;
-    padding: 0.85rem;
+    padding: 0.95rem 1rem;
     border-radius: 10px;
     background: rgba(16, 22, 22, 0.1);
     overflow-x: auto;
+    line-height: 1.55;
   }
 
   .editor-fallback {
@@ -380,9 +464,9 @@
     background: transparent;
     resize: none;
     min-height: 0;
-    line-height: 1.6;
+    line-height: 1.74;
     color: var(--ink);
-    font-size: 1rem;
+    font-size: clamp(1.02rem, 0.16vw + 0.98rem, 1.1rem);
     padding: clamp(20px, 4vw, 32px);
     user-select: text;
     cursor: text;

@@ -214,6 +214,32 @@
     askError = '';
   };
 
+  const encodePathForGitHubUrl = (value = '') =>
+    value
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+
+  const getNoteGitHubUrl = (note) => {
+    if (!repoMeta?.owner || !repoMeta?.name || !repoMeta?.defaultBranch) return '';
+    const notePath = (note?.path ?? note?.id ?? '').trim();
+    if (!notePath) return '';
+
+    const owner = encodeURIComponent(repoMeta.owner);
+    const repo = encodeURIComponent(repoMeta.name);
+    const branch = encodePathForGitHubUrl(repoMeta.defaultBranch);
+    const path = encodePathForGitHubUrl(notePath);
+    if (!branch || !path) return '';
+
+    return `https://github.com/${owner}/${repo}/blob/${branch}/${path}`;
+  };
+
+  const openNoteOnGitHub = (url) => {
+    if (!browser || !url) return;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const createToolContext = () => ({
     token: authToken,
     notes,
@@ -777,9 +803,12 @@
       {#each getOpenWindows(windowStates) as win (win.noteId)}
         {@const note = notes.find(n => n.id === win.noteId)}
         {#if note}
+          {@const noteGitHubUrl = getNoteGitHubUrl(note)}
           <NoteWindow
             {note}
             windowState={win}
+            canOpenOnGitHub={Boolean(noteGitHubUrl)}
+            onOpenOnGitHub={() => openNoteOnGitHub(noteGitHubUrl)}
             followupValue={followupDrafts[win.noteId] ?? ''}
             followupEnabled={FOLLOWUP_ENABLED}
             followupPending={followupPending[win.noteId] ?? false}

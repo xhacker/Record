@@ -11,6 +11,8 @@
     onDragStart,
     onResizeStart,
     onTitleChange,
+    canOpenOnGitHub = false,
+    onOpenOnGitHub,
     onContentChange,
     onContentKeydown,
     onContentBlur,
@@ -112,10 +114,36 @@
       />
     {:else}
       <span class="note-title-display">
-        <span class="note-title-base">{displayName.base}</span>
-        {#if displayName.ext}
-          <span class="note-title-ext">{displayName.ext}</span>
-        {/if}
+        <span class="note-title-main">
+          <span class="note-title-base">{displayName.base}</span>
+          {#if displayName.ext}
+            <span class="note-title-ext">{displayName.ext}</span>
+          {/if}
+          <button
+            class="note-title-open"
+            type="button"
+            aria-label="Open file on GitHub"
+            title={canOpenOnGitHub ? 'Open on GitHub' : 'GitHub link unavailable'}
+            disabled={!canOpenOnGitHub}
+            onpointerdown={(event) => {
+              event.stopPropagation();
+            }}
+            onclick={(event) => {
+              event.stopPropagation();
+              onOpenOnGitHub?.();
+            }}
+          >
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M4 12L12 4M6.5 4H12V9.5"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+        </span>
         {#if status}
           <span class="note-title-status">&nbsp;&mdash; {status.label}{#if status.ellipsis}&hellip;{/if}</span>
         {/if}
@@ -248,10 +276,17 @@
     max-width: 60%;
     pointer-events: none;
     display: inline-flex;
-    align-items: baseline;
+    align-items: center;
+  }
+
+  .note-title-main {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
   }
 
   .note-title-base {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -260,6 +295,38 @@
     color: rgba(16, 22, 22, 0.45);
     font-weight: 500;
     flex-shrink: 0;
+  }
+
+  .note-title-open {
+    width: 24px;
+    height: 24px;
+    margin-left: 2px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: rgba(16, 22, 22, 0.35);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    pointer-events: auto;
+    transition: all 0.15s ease;
+  }
+
+  .note-title-open svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .note-title-open:hover:not(:disabled) {
+    background: rgba(16, 22, 22, 0.08);
+    color: rgba(16, 22, 22, 0.7);
+  }
+
+  .note-title-open:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 
   .note-title-status {

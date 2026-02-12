@@ -38,6 +38,7 @@ Copy `.env.example` and set values in `.env.local`:
 - Milkdown rich-text editing for notes and transcripts
 - Markdown is canonical document state
 - Transcript frontmatter is hidden in editor display and preserved on save
+- Transcript HTML nodes render as sanitized HTML (instead of literal tags)
 
 **AI**
 - Ask panel with agent tools (multi-round tool calling)
@@ -122,6 +123,7 @@ transcripts/
 
 Transcripts are stored as markdown files with frontmatter.
 Each user turn uses a bubble HTML block, optional tool-result code fences, then assistant text.
+Milkdown renders transcript HTML blocks as sanitized DOM in the editor.
 
 ```
 ---

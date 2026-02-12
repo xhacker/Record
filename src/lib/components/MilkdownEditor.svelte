@@ -183,10 +183,6 @@
 
         replaceAllCommand = milkdownUtils.replaceAll;
         editorViewCtxKey = editorViewCtx;
-        const transcriptHtmlView = createTranscriptHtmlView({
-          htmlSchema,
-          viewFactory: milkdownUtils.$view,
-        });
         editor = Editor.make()
           .config(nord)
           .config((ctx) => {
@@ -207,7 +203,12 @@
             });
           })
           .use(commonmark)
-          .use(transcriptHtmlView)
+          .use(
+            createTranscriptHtmlView({
+              htmlSchema: htmlSchema.node,
+              viewFactory: milkdownUtils.$view,
+            })
+          )
           .use(history)
           .use(listener);
 

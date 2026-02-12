@@ -384,6 +384,11 @@
     box-shadow: 0 12px 20px rgba(214, 90, 24, 0.12);
   }
 
+  .note.transcript :global(.milkdown .editor .transcript-html.transcript-html-block) {
+    display: block;
+    margin: 0.4rem 0 0.8rem;
+  }
+
   .note.transcript :global(.milkdown .editor pre code) {
     font-size: 0.82rem;
     line-height: 1.45;

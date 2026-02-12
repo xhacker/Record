@@ -2,6 +2,10 @@
   "name": "the-record",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.6.2",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",

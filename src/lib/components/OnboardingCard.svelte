@@ -7,6 +7,8 @@
     oauth_no_repositories: 'No accessible repositories were found for this GitHub account.',
     oauth_session_missing: 'Sign-in session expired. Start the GitHub login flow again.',
     oauth_callback_failed: 'GitHub sign-in failed. Please try again.',
+    oauth_origin_mismatch: 'OAuth callback origin mismatch. Use the same app URL as your configured callback host.',
+    oauth_server_config_invalid: 'Server OAuth/session configuration is missing or invalid.',
   };
 
   const authErrorMessage = $derived(ERROR_COPY[authError] ?? '');
@@ -20,9 +22,11 @@
       Sign in with GitHub, then choose one installed repository to use for this session.
     </p>
 
-    <a class="onboarding-submit" href="/auth/github/start">
-      Continue with GitHub
-    </a>
+    <form method="POST" action="/auth/github/start" class="oauth-form">
+      <button class="onboarding-submit" type="submit">
+        Continue with GitHub
+      </button>
+    </form>
 
     {#if authErrorMessage}
       <p class="field-error" role="alert">{authErrorMessage}</p>
@@ -83,7 +87,6 @@
     font-weight: 600;
     font-size: 0.95rem;
     letter-spacing: 0.02em;
-    text-decoration: none;
     cursor: pointer;
     box-shadow: 0 16px 30px rgba(222, 97, 34, 0.35);
     transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
@@ -92,6 +95,10 @@
   .onboarding-submit:hover {
     transform: translateY(-1px);
     box-shadow: 0 20px 36px rgba(222, 97, 34, 0.4);
+  }
+
+  .oauth-form {
+    margin: 0;
   }
 
   .field-error {

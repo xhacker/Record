@@ -164,7 +164,7 @@ DELETE /repos/{owner}/{repo}/contents/{path}
 
 ### Auth Routes
 
-- `GET /auth/github/start`
+- `POST /auth/github/start`
 - `GET /auth/github/callback`
 - `GET /auth/select-repo`
 - `POST /auth/select-repo` (select one repository)

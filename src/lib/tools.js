@@ -1,22 +1,31 @@
 /**
  * Client-side agent tools
- * Executes tools using the existing GitHub API client and UI state
+ * Executes tools using authenticated API endpoints and UI state
  */
 
-import { listFilePaths, readFileByPath, writeFileByPath, searchNotes } from './github.js';
 import { snapToGrid, DEFAULT_WIDTH, DEFAULT_HEIGHT } from './windowManager.js';
 
 /**
  * @typedef {Object} ToolContext
- * @property {string} token - GitHub token
  * @property {Array} notes - Current notes array
  * @property {Object} windowStates - Current window states
  * @property {function(string): void} openWindow - Open a window for a note
  * @property {function(string): void} closeWindow - Close a window
  * @property {function(string, number, number): void} moveWindow - Move a window
  * @property {function(string, number, number): void} resizeWindow - Resize a window
- * @property {function(): void} refreshNotes - Refresh notes from GitHub after write
+ * @property {function(): void} refreshNotes - Refresh notes from repo after write
  */
+
+const callRepoApi = async (path, options = {}) => {
+  const response = await fetch(path, options);
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload?.error ?? `${response.status} ${response.statusText}`);
+  }
+
+  return payload;
+};
 
 /**
  * Execute an agent tool and return the result
@@ -26,7 +35,7 @@ import { snapToGrid, DEFAULT_WIDTH, DEFAULT_HEIGHT } from './windowManager.js';
  * @returns {Promise<string>} - JSON string result for the LLM
  */
 export const executeTool = async (toolName, args, context) => {
-  const { token, notes, windowStates, openWindow, closeWindow, moveWindow, resizeWindow, refreshNotes } = context;
+  const { notes, windowStates, openWindow, closeWindow, moveWindow, resizeWindow, refreshNotes } = context;
 
   try {
     switch (toolName) {
@@ -35,62 +44,67 @@ export const executeTool = async (toolName, args, context) => {
       // ============================================
 
       case 'list_files': {
-        if (!token) {
-          return JSON.stringify({ error: 'GitHub token is required.' });
-        }
-        const files = await listFilePaths(token);
-        return JSON.stringify({ files, count: files.length });
+        const payload = await callRepoApi('/api/repo/files');
+        return JSON.stringify({ files: payload.files ?? [], count: payload.count ?? 0 });
       }
 
       case 'read_file': {
-        if (!token) {
-          return JSON.stringify({ error: 'GitHub token is required.' });
-        }
         const path = args.path;
         if (!path) {
           return JSON.stringify({ error: 'Missing required parameter: path' });
         }
-        const file = await readFileByPath(token, path);
-        return JSON.stringify({ path: file.path, content: file.content });
+
+        const payload = await callRepoApi(`/api/repo/file?path=${encodeURIComponent(String(path))}`);
+        return JSON.stringify({ path: payload.path, content: payload.content });
       }
 
       case 'write_file': {
-        if (!token) {
-          return JSON.stringify({ error: 'GitHub token is required.' });
-        }
         const path = args.path;
         const content = args.content;
+
         if (!path) {
           return JSON.stringify({ error: 'Missing required parameter: path' });
         }
         if (typeof content !== 'string') {
           return JSON.stringify({ error: 'Missing required parameter: content' });
         }
-        const result = await writeFileByPath(token, path, content);
-        // Refresh notes to pick up the new/updated file
+
+        let existed = true;
+        try {
+          await callRepoApi(`/api/repo/file?path=${encodeURIComponent(String(path))}`);
+        } catch {
+          existed = false;
+        }
+
+        await callRepoApi('/api/repo/file', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ path: String(path), content }),
+        });
+
         if (refreshNotes) {
           refreshNotes();
         }
+
         return JSON.stringify({
           success: true,
-          path: result.path,
-          created: result.created,
+          path: String(path),
+          created: !existed,
         });
       }
 
       case 'search_notes': {
-        if (!token) {
-          return JSON.stringify({ error: 'GitHub token is required.' });
-        }
         const query = args.query;
         if (!query) {
           return JSON.stringify({ error: 'Missing required parameter: query' });
         }
-        const results = await searchNotes(token, query);
+
+        const payload = await callRepoApi(`/api/repo/search?query=${encodeURIComponent(String(query))}`);
+
         return JSON.stringify({
-          query,
-          results,
-          count: results.length,
+          query: payload.query,
+          results: payload.results,
+          count: payload.count,
         });
       }
 
@@ -134,7 +148,6 @@ export const executeTool = async (toolName, args, context) => {
           return JSON.stringify({ error: 'Missing required parameter: noteId' });
         }
 
-        // Check if note exists
         const note = notes?.find((n) => n.id === noteId || n.path === noteId);
         if (!note) {
           return JSON.stringify({ error: `Note not found: ${noteId}` });

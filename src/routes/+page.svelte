@@ -1,9 +1,7 @@
 <script>
   import { browser } from '$app/environment';
-  import { loadAuthToken, saveAuth } from '$lib/auth.js';
   import {
     createNote,
-    sortNotesByPath,
     formatDateStamp,
     getNextDateFilename,
     normalizeNote,
@@ -32,13 +30,15 @@
   import NoteWindow from '$lib/components/NoteWindow.svelte';
   import Instructions from '$lib/components/Instructions.svelte';
 
+  let { data: pageData } = $props();
+
   // State
   let notes = $state([]);
   let windowStates = $state({});
   let topZ = $state(1);
   let sidebarOpen = $state(false);
-  let hasAuth = $state(false);
-  let authToken = $state(null);
+  let authRevoked = $state(false);
+  let hasAuth = $derived(!!pageData?.authenticated && !authRevoked);
   let repoMeta = $state(null);
   let notesLoading = $state(false);
   let notesError = $state('');
@@ -118,7 +118,7 @@
     const note = notes.find((n) => n.id === noteId);
     if (!note) return;
     notesError = '';
-    const result = await remote.saveNote(note, authToken, repoMeta, updateNote);
+    const result = await remote.saveNote(note, repoMeta, updateNote);
     if (result.result?.repo) repoMeta = result.result.repo;
     if (!result.success) notesError = result.error;
   };
@@ -140,15 +140,6 @@
       return;
     }
 
-    // Local-only mode
-    if (!authToken) {
-      notes = sortNotesByPath(notes.map((n) =>
-        n.id === noteId ? { ...n, id: nextPath, path: nextPath, filename } : n
-      ));
-      moveNoteIdentity(noteId, nextPath);
-      return;
-    }
-
     // Save first if dirty
     if (note.dirty) await saveNote(noteId);
     const refreshed = notes.find((n) => n.id === noteId);
@@ -158,7 +149,7 @@
     }
 
     notesError = '';
-    const result = await remote.renameNote(refreshed, nextPath, filename, authToken, repoMeta, updateNote, updateNotes);
+    const result = await remote.renameNote(refreshed, nextPath, filename, repoMeta, updateNote, updateNotes);
     if (result.success) {
       moveNoteIdentity(noteId, result.result.newId);
       repoMeta = result.result.repo;
@@ -171,16 +162,14 @@
   // Shared helper for inserting notes (used by addNote and addTranscript)
   const insertAndSyncNote = async (note) => {
     notesError = '';
-    const fresh = { ...note };
-    if (authToken) fresh.saving = true;
+    const fresh = { ...note, saving: true };
 
     notes = [fresh, ...notes];
     windowStates = { ...windowStates, [fresh.id]: createWindowState(windowStates, topZ++) };
     persistStates(windowStates);
     sidebarOpen = false;
 
-    if (!authToken) return;
-    const result = await remote.createNote(fresh, authToken, repoMeta, updateNote);
+    const result = await remote.createNote(fresh, repoMeta, updateNote);
     if (result.result?.repo) repoMeta = result.result.repo;
     if (!result.success) notesError = result.error;
   };
@@ -241,7 +230,6 @@
   };
 
   const createToolContext = () => ({
-    token: authToken,
     notes,
     windowStates,
     openWindow: openWindowForAgent,
@@ -279,7 +267,7 @@
         temperature: AI_CONFIG.askTemperature,
         max_completion_tokens: AI_CONFIG.askMaxTokens,
         top_p: 1,
-        useTools: AI_CONFIG.useTools && !!authToken,
+        useTools: AI_CONFIG.useTools && hasAuth,
         ...(messages ? { messages } : { prompt }),
       };
       const payload = await requestChat(requestBody, 'Failed to ask AI.');
@@ -535,13 +523,8 @@
     if (!target) return;
     if (!window.confirm(`Delete "${target.filename?.trim() || 'Untitled'}"? This cannot be undone.`)) return;
 
-    if (!authToken) {
-      if (!removeNoteLocally(id)) void addNote();
-      return;
-    }
-
     notesError = '';
-    const result = await remote.deleteNote(target, authToken, repoMeta, updateNote);
+    const result = await remote.deleteNote(target, repoMeta, updateNote);
     if (result.success) {
       repoMeta = result.result.repo;
       if (!removeNoteLocally(id)) void addNote();
@@ -551,8 +534,8 @@
   };
 
   const loadFromGitHub = async () => {
-    if (!authToken) return;
-    await remote.loadNotes(authToken, {
+    if (!hasAuth) return;
+    await remote.loadNotes({
       onStart: () => { notesLoading = true; notesError = ''; },
       onSuccess: ({ repo, notes: loaded, truncated }) => {
         repoMeta = repo;
@@ -566,7 +549,7 @@
           persistStates(windowStates);
         }
       },
-      onAuthError: () => { hasAuth = false; authToken = null; repoMeta = null; notes = []; },
+      onAuthError: () => { authRevoked = true; repoMeta = null; notes = []; },
       onError: (msg) => { notesError = msg; notes = []; },
       onFinally: () => { notesLoading = false; },
     });
@@ -672,32 +655,11 @@
     }
   };
 
-  // Auth
-  const handleAuth = async (token) => {
-    if (saveAuth(token)) {
-      hasAuth = true;
-      authToken = token.trim();
-      windowStates = loadWindowStates();
-      topZ = getTopZ(windowStates);
-      await loadFromGitHub();
-    }
-  };
-
-  const handleSkip = () => {
-    hasAuth = true;
-    authToken = null;
-    repoMeta = null;
-    notes = [normalizeNote(createNote(`untitled-${Date.now()}.md`))];
-    windowStates = loadWindowStates();
-    topZ = getTopZ(windowStates);
-  };
-
   // Init
   $effect(() => {
     if (!browser || initialized) return;
     initialized = true;
-    authToken = loadAuthToken();
-    hasAuth = !!authToken;
+    repoMeta = pageData?.repo ?? null;
     windowStates = loadWindowStates();
     topZ = getTopZ(windowStates);
     if (hasAuth) void loadFromGitHub();
@@ -711,7 +673,7 @@
 <main class:sidebar-open={sidebarOpen} class="page" onpointermove={onPointerMove} onpointerup={endDrag} onpointerleave={endDrag}>
   <div class="glow"></div>
   {#if !hasAuth}
-    <OnboardingCard onSubmit={handleAuth} onSkip={handleSkip} />
+    <OnboardingCard authError={pageData?.authError ?? ''} />
   {:else}
     <Sidebar
       {notes}
@@ -740,6 +702,9 @@
       {/if}
       <div class="ask-stack">
         <div class="ask-buttons">
+          <form method="POST" action="/auth/signout">
+            <button class="signout-btn" type="submit">Sign out</button>
+          </form>
           <button class="ask-ai" type="button" onclick={openAskPanel} disabled={askPending || dictationRecording || dictationPending}>
             {ASK_LABEL}
           </button>
@@ -936,6 +901,28 @@
   .ask-buttons {
     display: flex;
     gap: 8px;
+  }
+
+  .ask-buttons form {
+    margin: 0;
+  }
+
+  .signout-btn {
+    border: none;
+    background: rgba(16, 22, 22, 0.12);
+    color: rgba(16, 22, 22, 0.74);
+    padding: 10px 14px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .signout-btn:hover {
+    background: rgba(16, 22, 22, 0.2);
   }
 
   .dictation-btn {

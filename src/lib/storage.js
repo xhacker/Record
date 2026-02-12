@@ -1,5 +1,4 @@
 export const STATES_KEY = 'the-record-states';
-export const AUTH_KEY = 'the-record-auth';
 
 export const loadJSON = (key, fallback = null) => {
   try {

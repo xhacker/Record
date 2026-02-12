@@ -1,19 +1,15 @@
 <script>
-  let { onSubmit, onSkip } = $props();
+  let { authError = '' } = $props();
 
-  let tokenInput = $state('');
-  let tokenVisible = $state(false);
-  let authError = $state('');
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    const token = tokenInput.trim();
-    if (!token) {
-      authError = 'Enter a personal access token to continue.';
-      return;
-    }
-    onSubmit(token);
+  const ERROR_COPY = {
+    oauth_state_invalid: 'Sign-in expired. Please try connecting GitHub again.',
+    oauth_code_missing: 'GitHub did not return an authorization code.',
+    oauth_no_repositories: 'No accessible repositories were found for this GitHub account.',
+    oauth_session_missing: 'Sign-in session expired. Start the GitHub login flow again.',
+    oauth_callback_failed: 'GitHub sign-in failed. Please try again.',
   };
+
+  const authErrorMessage = $derived(ERROR_COPY[authError] ?? '');
 </script>
 
 <section class="onboarding" aria-label="GitHub onboarding">
@@ -21,45 +17,20 @@
     <p class="app-title">THE RECORD.</p>
     <h1 class="onboarding-title">Connect your GitHub</h1>
     <p class="onboarding-lead">
-      OAuth is coming next. For the MVP, paste a Personal Access Token so the record can read your notes.
+      Sign in with GitHub, then choose one installed repository to use for this session.
     </p>
-    <form class="onboarding-form" onsubmit={handleSubmit}>
-      <label class="field">
-        <span class="field-label">Personal Access Token</span>
-        <div class="field-control">
-          <input
-            class="field-input"
-            type={tokenVisible ? 'text' : 'password'}
-            placeholder="ghp_********"
-            value={tokenInput}
-            oninput={(e) => { tokenInput = e.target.value; authError = ''; }}
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <button
-            class="field-action"
-            type="button"
-            onclick={() => (tokenVisible = !tokenVisible)}
-          >
-            {tokenVisible ? 'Hide' : 'Show'}
-          </button>
-        </div>
-        <span class="field-help">
-          Stored locally in your browser. Use a token with repo access (classic) or Contents read (fine-grained).
-        </span>
-        {#if authError}
-          <span class="field-error">{authError}</span>
-        {/if}
-      </label>
-      <button class="onboarding-submit" type="submit" disabled={!tokenInput.trim()}>
-        Enter the record
-      </button>
-    </form>
+
+    <a class="onboarding-submit" href="/auth/github/start">
+      Continue with GitHub
+    </a>
+
+    {#if authErrorMessage}
+      <p class="field-error" role="alert">{authErrorMessage}</p>
+    {/if}
+
     <div class="onboarding-foot">
-      <span class="onboarding-badge">MVP sign-in</span>
-      <span class="onboarding-note">You can revoke the token anytime in GitHub settings.</span>
-      <!-- TODO: Remove skip button before release -->
-      <button class="skip-button" type="button" onclick={onSkip}>Skip for now</button>
+      <span class="onboarding-badge">OAuth sign-in</span>
+      <span class="onboarding-note">No personal access token needed.</span>
     </div>
   </div>
 </section>
@@ -98,76 +69,21 @@
     line-height: 1.6;
   }
 
-  .onboarding-form {
-    display: grid;
-    gap: 18px;
-  }
-
-  .field {
-    display: grid;
-    gap: 10px;
-  }
-
-  .field-label {
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: rgba(16, 22, 22, 0.7);
-    font-weight: 600;
-  }
-
-  .field-control {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    border-radius: 16px;
-    padding: 12px 16px;
-    background: rgba(255, 255, 255, 0.85);
-    border: 1px solid rgba(16, 22, 22, 0.12);
-    box-shadow: inset 0 1px 2px rgba(16, 22, 22, 0.06);
-  }
-
-  .field-input {
-    flex: 1;
-    border: none;
-    outline: none;
-    font-size: 0.95rem;
-    background: transparent;
-    color: var(--ink);
-  }
-
-  .field-action {
-    border: none;
-    background: rgba(16, 22, 22, 0.08);
-    color: var(--muted);
-    padding: 6px 12px;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .field-help {
-    color: var(--muted);
-    font-size: 0.82rem;
-    line-height: 1.5;
-  }
-
-  .field-error {
-    color: #a33c1c;
-    font-size: 0.82rem;
-    font-weight: 600;
-  }
-
   .onboarding-submit {
     border: none;
     border-radius: 999px;
     height: 48px;
+    padding: 0 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    justify-self: start;
     background: linear-gradient(135deg, #e46b2b, #c6581f);
     color: #fff7ef;
     font-weight: 600;
     font-size: 0.95rem;
     letter-spacing: 0.02em;
+    text-decoration: none;
     cursor: pointer;
     box-shadow: 0 16px 30px rgba(222, 97, 34, 0.35);
     transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
@@ -178,11 +94,11 @@
     box-shadow: 0 20px 36px rgba(222, 97, 34, 0.4);
   }
 
-  .onboarding-submit:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    box-shadow: none;
-    transform: none;
+  .field-error {
+    color: #a33c1c;
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin: 0;
   }
 
   .onboarding-foot {
@@ -204,15 +120,5 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-  }
-
-  .skip-button {
-    border: none;
-    background: transparent;
-    color: var(--muted);
-    font-size: 0.82rem;
-    cursor: pointer;
-    text-decoration: underline;
-    margin-left: auto;
   }
 </style>

@@ -27,7 +27,6 @@ Copy `.env.example` and set values in `.env.local`:
 **Auth**
 - GitHub App OAuth (no PAT fallback)
 - Encrypted `HttpOnly` cookie session (`record_auth_session`)
-- 30-day session TTL (configurable)
 - Repo selected once during sign-in (`/auth/select-repo`)
 
 **Storage**
@@ -42,14 +41,6 @@ Copy `.env.example` and set values in `.env.local`:
 **AI**
 - Ask panel with agent tools (multi-round tool calling)
 - Tool results stored as `tool:` code blocks in transcript markdown
-- Follow-ups enabled in transcript windows
-
-**UI**
-- Single centered app canvas
-- 40px grid snap for window move/resize
-- Sidebar note pills wrap long filenames
-- Note titlebar GitHub deep-link button
-- Custom favicon at `static/favicon.svg` (accent background + white note mark)
 
 **Stack**
 - SvelteKit 2 + Svelte 5
@@ -78,13 +69,13 @@ Copy `.env.example` and set values in `.env.local`:
 │                    │  SvelteKit APIs  │    │  - move_window           │ │
 │                    │  (/api/repo/*)   │    │  - resize_window         │ │
 │                    └────────┬─────────┘    └──────────────────────────┘ │
-│                             │                                             │
-│                             ▼                                             │
-│                    ┌──────────────────┐                                    │
-│                    │ GitHub API       │                                    │
-│                    │ (App installation│                                    │
-│                    │  token, server)  │                                    │
-│                    └──────────────────┘                                    │
+│                             │                                           │
+│                             ▼                                           │
+│                    ┌──────────────────┐                                 │
+│                    │ GitHub API       │                                 │
+│                    │ (App installation│                                 │
+│                    │  token, server)  │                                 │
+│                    └──────────────────┘                                 │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
                                │

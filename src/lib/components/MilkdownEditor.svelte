@@ -205,7 +205,7 @@
           .use(commonmark)
           .use(
             createTranscriptHtmlView({
-              htmlSchema: htmlSchema.node,
+              htmlSchema,
               viewFactory: milkdownUtils.$view,
             })
           )

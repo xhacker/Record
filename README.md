@@ -37,6 +37,7 @@ Copy `.env.example` and set values in `.env.local`:
 **Editor**
 - Milkdown rich-text editing for notes and transcripts
 - Markdown is canonical document state
+- Transcript frontmatter is hidden in editor display and preserved on save
 
 **AI**
 - Ask panel with agent tools (multi-round tool calling)

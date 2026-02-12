@@ -107,6 +107,44 @@ export const parseFrontmatter = (content = '') => {
   };
 };
 
+/**
+ * Split markdown into raw frontmatter block and body.
+ * @param {string} [content]
+ * @returns {{ frontmatter: string; body: string }}
+ */
+export const splitFrontmatterContent = (content = '') => {
+  const match = content.match(FRONTMATTER_REGEX);
+  if (!match) {
+    return { frontmatter: '', body: content };
+  }
+
+  return {
+    frontmatter: match[0],
+    body: content.slice(match[0].length),
+  };
+};
+
+/**
+ * Get editor-visible markdown body without frontmatter.
+ * @param {string} [content]
+ * @returns {string}
+ */
+export const getEditableBodyContent = (content = '') =>
+  splitFrontmatterContent(content).body;
+
+/**
+ * Reattach original frontmatter to edited markdown body.
+ * @param {string} [originalContent]
+ * @param {string} [editedBody]
+ * @returns {string}
+ */
+export const applyEditedBodyContent = (originalContent = '', editedBody = '') => {
+  const { frontmatter } = splitFrontmatterContent(originalContent);
+  const body = (editedBody ?? '').toString();
+  if (!frontmatter) return body;
+  return `${frontmatter}${body}`;
+};
+
 const serializeFrontmatter = (data = {}) => {
   const { type, thread_id, ...rest } = data;
   const orderedEntries = [

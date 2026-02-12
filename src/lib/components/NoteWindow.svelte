@@ -1,6 +1,6 @@
 <script>
   import { DEFAULT_WIDTH, DEFAULT_HEIGHT } from '$lib/windowManager.js';
-  import { getDisplayName } from '$lib/notes.js';
+  import { applyEditedBodyContent, getDisplayName, getEditableBodyContent } from '$lib/notes.js';
   import MilkdownEditor from '$lib/components/MilkdownEditor.svelte';
 
   let {
@@ -32,7 +32,9 @@
 
   const displayName = $derived.by(() => getDisplayName(note));
   const isTranscript = $derived.by(() => note?.type === 'transcript');
-  const editorValue = $derived.by(() => note?.content ?? '');
+  const editorValue = $derived.by(() =>
+    isTranscript ? getEditableBodyContent(note?.content ?? '') : note?.content ?? ''
+  );
   const status = $derived.by(() => {
     if (note?.saving) {
       return { label: 'Saving', ellipsis: true };
@@ -60,7 +62,11 @@
   };
 
   const handleContentChange = (value) => {
-    onContentChange?.(value);
+    if (!isTranscript) {
+      onContentChange?.(value);
+      return;
+    }
+    onContentChange?.(applyEditedBodyContent(note?.content ?? '', value));
   };
 
   function focusOnMount(node) {

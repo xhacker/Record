@@ -26,6 +26,8 @@ npm run dev
 
 **Titlebar**: Each note window includes an external-link button next to `.md` to open that file on GitHub
 
+**Favicon**: `static/favicon.svg` with accent background and white note mark
+
 **AI**: Ask panel with agent tools (multi-round tool calling; tool results stored as `tool:` code blocks and shown as a collapsible green bubble)
 
 **Follow-ups**: Enabled in transcript windows (full transcript sent as context)
